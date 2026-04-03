@@ -16,7 +16,7 @@ const AttendanceLogging = () => {
   });
   const [formData, setFormData] = useState({
     employee_id: '',
-    section: '',
+    section_id: 0,
     check_in: '',
     check_out: '',
     date: new Date().toISOString().split('T')[0]
@@ -45,7 +45,7 @@ const AttendanceLogging = () => {
     handleFetch('/api/attendance', (data) => setRecentLogs(data.slice(0, 5)));
     handleFetch('/api/sections', (data) => {
       setSections(data);
-      if (data.length > 0) setFormData(prev => ({ ...prev, section: data[0].name }));
+      if (data.length > 0) setFormData(prev => ({ ...prev, section_id: data[0].id }));
     });
     
     fetchWithAuth('/api/stats')
@@ -139,11 +139,11 @@ const AttendanceLogging = () => {
                 <label className="block font-body text-[11px] font-bold text-on-surface-variant uppercase tracking-widest">Working Section</label>
                 <div className="relative">
                   <select 
-                    value={formData.section}
-                    onChange={(e) => setFormData({ ...formData, section: e.target.value })}
+                    value={formData.section_id}
+                    onChange={(e) => setFormData({ ...formData, section_id: parseInt(e.target.value) })}
                     className="w-full bg-surface-container-highest border-none rounded-xl px-4 py-4 text-on-surface font-medium focus:ring-2 focus:ring-primary focus:bg-surface-container-lowest transition-all appearance-none"
                   >
-                    {sections.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                    {sections.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                   <Factory className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-outline" size={20} />
                 </div>

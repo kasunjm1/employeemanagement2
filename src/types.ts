@@ -26,7 +26,8 @@ export interface Employee {
   id: number;
   name: string;
   nickname: string;
-  role: string;
+  role_id: number;
+  section_id: number;
   join_date: string;
   employee_id: string;
   status: string;
@@ -34,9 +35,10 @@ export interface Employee {
   whatsapp: string;
   nic: string;
   tax_residency: string;
-  section: string;
   salary_type: string;
   avatar_url: string;
+  role?: string; // For display
+  section?: string; // For display
 }
 
 export interface Attendance {
@@ -46,9 +48,10 @@ export interface Attendance {
   check_in: string;
   check_out: string;
   status: string;
-  section: string;
+  section_id: number;
   name?: string;
   avatar_url?: string;
+  section?: string; // For display
 }
 
 export interface Leave {

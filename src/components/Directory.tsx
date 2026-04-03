@@ -18,14 +18,14 @@ const Directory = () => {
   const initialEmployeeState = {
     name: '',
     nickname: '',
-    role: '',
+    role_id: 0,
     join_date: new Date().toISOString().split('T')[0],
     employee_id: '',
     mobile: '',
     whatsapp: '',
     nic: '',
     tax_residency: 'Domestic (Standard)',
-    section: '',
+    section_id: 0,
     salary_type: 'Monthly',
     avatar_url: '',
     status: 'On-Duty'
@@ -178,14 +178,14 @@ const Directory = () => {
     setNewEmployee({
       name: emp.name,
       nickname: emp.nickname || '',
-      role: emp.role,
+      role_id: emp.role_id,
       join_date: new Date(emp.join_date).toISOString().split('T')[0],
       employee_id: emp.employee_id,
       mobile: emp.mobile || '',
       whatsapp: emp.whatsapp || '',
       nic: emp.nic || '',
       tax_residency: emp.tax_residency || 'Domestic (Standard)',
-      section: emp.section || '',
+      section_id: emp.section_id,
       salary_type: emp.salary_type || 'Monthly',
       avatar_url: emp.avatar_url || '',
       status: emp.status || 'On-Duty'
@@ -197,7 +197,8 @@ const Directory = () => {
 
   const filtered = employees.filter(e => 
     e.name.toLowerCase().includes(search.toLowerCase()) || 
-    e.role.toLowerCase().includes(search.toLowerCase()) ||
+    (e.role?.toLowerCase().includes(search.toLowerCase()) ?? false) ||
+    (e.section?.toLowerCase().includes(search.toLowerCase()) ?? false) ||
     e.employee_id.toLowerCase().includes(search.toLowerCase())
   );
 
@@ -373,12 +374,12 @@ const Directory = () => {
                     </label>
                     <select 
                       required
-                      value={newEmployee.role}
-                      onChange={(e) => setNewEmployee({ ...newEmployee, role: e.target.value })}
+                      value={newEmployee.role_id}
+                      onChange={(e) => setNewEmployee({ ...newEmployee, role_id: parseInt(e.target.value) })}
                       className="w-full bg-surface-container-low border-none rounded-xl py-3 px-4 font-body text-sm focus:ring-2 focus:ring-primary transition-all"
                     >
-                      <option value="">Select Role</option>
-                      {roles.map(r => <option key={r.id} value={r.name}>{r.name}</option>)}
+                      <option value="0">Select Role</option>
+                      {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
                     </select>
                   </div>
                   <div className="space-y-2">
@@ -390,12 +391,12 @@ const Directory = () => {
                     </label>
                     <select 
                       required
-                      value={newEmployee.section}
-                      onChange={(e) => setNewEmployee({ ...newEmployee, section: e.target.value })}
+                      value={newEmployee.section_id}
+                      onChange={(e) => setNewEmployee({ ...newEmployee, section_id: parseInt(e.target.value) })}
                       className="w-full bg-surface-container-low border-none rounded-xl py-3 px-4 font-body text-sm focus:ring-2 focus:ring-primary transition-all"
                     >
-                      <option value="">Select Section</option>
-                      {sections.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                      <option value="0">Select Section</option>
+                      {sections.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                     </select>
                   </div>
                   <div className="space-y-2">

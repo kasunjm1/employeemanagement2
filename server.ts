@@ -24,19 +24,6 @@ export async function initDb() {
     throw new Error("DATABASE_URL environment variable is missing. Please set it in Vercel project settings.");
   }
   try {
-    // Check if e_accounts already exists to skip initialization
-    const tableCheck = await query(`
-      SELECT EXISTS (
-        SELECT FROM information_schema.tables 
-        WHERE table_name = 'e_accounts'
-      )
-    `);
-    
-    if (tableCheck.rows[0].exists) {
-      console.log('Database already initialized, skipping table creation.');
-      return;
-    }
-
     console.log('Initializing database tables...');
     // Create e_accounts first as it's a dependency for others
     await query(`
@@ -86,7 +73,7 @@ export async function initDb() {
           account_id INTEGER REFERENCES e_accounts(id) ON DELETE CASCADE,
           name TEXT NOT NULL,
           nickname TEXT,
-          role TEXT NOT NULL,
+          role_id INTEGER REFERENCES e_roles(id),
           join_date DATE NOT NULL,
           employee_id TEXT NOT NULL,
           status TEXT DEFAULT 'On-Duty',
@@ -94,7 +81,7 @@ export async function initDb() {
           whatsapp TEXT,
           nic TEXT,
           tax_residency TEXT,
-          section TEXT,
+          section_id INTEGER REFERENCES e_sections(id),
           salary_type TEXT,
           avatar_url TEXT,
           deleted_at TIMESTAMP,
@@ -122,7 +109,7 @@ export async function initDb() {
           check_in TIME,
           check_out TIME,
           status TEXT,
-          section TEXT,
+          section_id INTEGER REFERENCES e_sections(id),
           deleted_at TIMESTAMP
         )
       `),
@@ -152,6 +139,16 @@ export async function initDb() {
         )
       `)
     ]);
+
+    // Migration: Add role_id and section_id to e_employees and e_attendance if they don't exist
+    try {
+      await query(`ALTER TABLE e_employees ADD COLUMN IF NOT EXISTS role_id INTEGER REFERENCES e_roles(id)`);
+      await query(`ALTER TABLE e_employees ADD COLUMN IF NOT EXISTS section_id INTEGER REFERENCES e_sections(id)`);
+      await query(`ALTER TABLE e_attendance ADD COLUMN IF NOT EXISTS section_id INTEGER REFERENCES e_sections(id)`);
+      console.log('Migration check complete: role_id and section_id columns verified.');
+    } catch (migrationErr) {
+      console.error('Migration error:', migrationErr);
+    }
 
     // Seed initial account and super admin
     const accountCheck = await query("SELECT COUNT(*) FROM e_accounts");
@@ -364,21 +361,29 @@ const authenticate = (req: any, res: any, next: any) => {
   app.get("/api/employees", authenticate, async (req: any, res) => {
     const { account_id } = req.user;
     try {
-      const result = await query("SELECT * FROM e_employees WHERE account_id = $1 AND deleted_at IS NULL ORDER BY name ASC", [account_id]);
+      const result = await query(`
+        SELECT e.*, r.name as role, s.name as section 
+        FROM e_employees e
+        LEFT JOIN e_roles r ON e.role_id = r.id
+        LEFT JOIN e_sections s ON e.section_id = s.id
+        WHERE e.account_id = $1 AND e.deleted_at IS NULL 
+        ORDER BY e.name ASC
+      `, [account_id]);
       res.json(result.rows);
     } catch (err) {
+      console.error("Error fetching employees:", err);
       res.status(500).json({ error: "Failed to fetch employees" });
     }
   });
 
   app.post("/api/employees", authenticate, async (req: any, res) => {
     const { account_id } = req.user;
-    const { name, nickname, role, join_date, employee_id, mobile, whatsapp, nic, tax_residency, section, salary_type, avatar_url } = req.body;
+    const { name, nickname, role_id, join_date, employee_id, mobile, whatsapp, nic, tax_residency, section_id, salary_type, avatar_url } = req.body;
     try {
       const result = await query(
-        `INSERT INTO e_employees (account_id, name, nickname, role, join_date, employee_id, mobile, whatsapp, nic, tax_residency, section, salary_type, avatar_url) 
+        `INSERT INTO e_employees (account_id, name, nickname, role_id, join_date, employee_id, mobile, whatsapp, nic, tax_residency, section_id, salary_type, avatar_url) 
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
-        [account_id, name, nickname, role, join_date, employee_id, mobile, whatsapp, nic, tax_residency, section, salary_type, avatar_url]
+        [account_id, name, nickname, role_id, join_date, employee_id, mobile, whatsapp, nic, tax_residency, section_id, salary_type, avatar_url]
       );
       res.json(result.rows[0]);
     } catch (err: any) {
@@ -393,13 +398,13 @@ const authenticate = (req: any, res: any, next: any) => {
 
   app.put("/api/employees/:id", authenticate, async (req: any, res) => {
     const { account_id } = req.user;
-    const { name, nickname, role, join_date, mobile, whatsapp, nic, tax_residency, section, salary_type, avatar_url, status } = req.body;
+    const { name, nickname, role_id, join_date, mobile, whatsapp, nic, tax_residency, section_id, salary_type, avatar_url, status } = req.body;
     try {
       const result = await query(
         `UPDATE e_employees 
-         SET name = $1, nickname = $2, role = $3, join_date = $4, mobile = $5, whatsapp = $6, nic = $7, tax_residency = $8, section = $9, salary_type = $10, avatar_url = $11, status = $12
+         SET name = $1, nickname = $2, role_id = $3, join_date = $4, mobile = $5, whatsapp = $6, nic = $7, tax_residency = $8, section_id = $9, salary_type = $10, avatar_url = $11, status = $12
          WHERE employee_id = $13 AND account_id = $14 AND deleted_at IS NULL RETURNING *`,
-        [name, nickname, role, join_date, mobile, whatsapp, nic, tax_residency, section, salary_type, avatar_url, status, req.params.id, account_id]
+        [name, nickname, role_id, join_date, mobile, whatsapp, nic, tax_residency, section_id, salary_type, avatar_url, status, req.params.id, account_id]
       );
       if (result.rows.length === 0) return res.status(404).json({ error: "Employee not found" });
       res.json(result.rows[0]);
@@ -447,7 +452,13 @@ const authenticate = (req: any, res: any, next: any) => {
   app.get("/api/employees/:id", authenticate, async (req: any, res) => {
     const { account_id } = req.user;
     try {
-      const result = await query("SELECT * FROM e_employees WHERE employee_id = $1 AND account_id = $2 AND deleted_at IS NULL", [req.params.id, account_id]);
+      const result = await query(`
+        SELECT e.*, r.name as role, s.name as section 
+        FROM e_employees e
+        LEFT JOIN e_roles r ON e.role_id = r.id
+        LEFT JOIN e_sections s ON e.section_id = s.id
+        WHERE e.employee_id = $1 AND e.account_id = $2 AND e.deleted_at IS NULL
+      `, [req.params.id, account_id]);
       if (result.rows.length === 0) return res.status(404).json({ error: "Employee not found" });
       res.json(result.rows[0]);
     } catch (err) {
@@ -459,9 +470,10 @@ const authenticate = (req: any, res: any, next: any) => {
     const { account_id } = req.user;
     try {
       const result = await query(`
-        SELECT a.*, e.name, e.avatar_url 
+        SELECT a.*, e.name, e.avatar_url, s.name as section 
         FROM e_attendance a 
         JOIN e_employees e ON a.employee_id = e.employee_id AND a.account_id = e.account_id
+        LEFT JOIN e_sections s ON a.section_id = s.id
         WHERE a.account_id = $1 AND a.deleted_at IS NULL AND e.deleted_at IS NULL
         ORDER BY a.date DESC, a.check_in DESC
       `, [account_id]);
@@ -473,14 +485,25 @@ const authenticate = (req: any, res: any, next: any) => {
 
   app.post("/api/attendance", authenticate, async (req: any, res) => {
     const { account_id } = req.user;
-    const { employee_id, date, check_in, check_out, status, section } = req.body;
+    const { employee_id, date, check_in, check_out, status, section_id } = req.body;
     try {
       const result = await query(
-        "INSERT INTO e_attendance (account_id, employee_id, date, check_in, check_out, status, section) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *",
-        [account_id, employee_id, date, check_in, check_out, status, section]
+        "INSERT INTO e_attendance (account_id, employee_id, date, check_in, check_out, status, section_id) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *",
+        [account_id, employee_id, date, check_in, check_out, status, section_id]
       );
-      res.json(result.rows[0]);
+      
+      // Fetch joined data for response
+      const joinedResult = await query(`
+        SELECT a.*, e.name, e.avatar_url, s.name as section 
+        FROM e_attendance a 
+        JOIN e_employees e ON a.employee_id = e.employee_id AND a.account_id = e.account_id
+        LEFT JOIN e_sections s ON a.section_id = s.id
+        WHERE a.id = $1
+      `, [result.rows[0].id]);
+      
+      res.json(joinedResult.rows[0]);
     } catch (err) {
+      console.error("Error recording attendance:", err);
       res.status(500).json({ error: "Failed to record attendance" });
     }
   });
