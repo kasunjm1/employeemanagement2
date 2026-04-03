@@ -38,15 +38,6 @@ const Dashboard = () => {
     });
   }, []);
 
-  const retentionData = [
-    { name: 'Jan', value: 40 },
-    { name: 'Feb', value: 60 },
-    { name: 'Mar', value: 55 },
-    { name: 'Apr', value: 85 },
-    { name: 'May', value: 45 },
-    { name: 'Jun', value: 75 },
-  ];
-
   return (
     <div className="space-y-10">
       {/* Hero Stats */}
@@ -58,10 +49,10 @@ const Dashboard = () => {
         >
           <div className="relative z-10">
             <p className="font-body text-xs uppercase tracking-[0.2em] font-medium opacity-80 mb-2">Total Workforce</p>
-            <h2 className="font-headline text-5xl font-extrabold mb-4">{stats?.totalWorkforce?.toLocaleString() || '1,284'}</h2>
+            <h2 className="font-headline text-5xl font-extrabold mb-4">{stats?.totalWorkforce?.toLocaleString() || '0'}</h2>
             <div className="flex items-center gap-2 text-sm font-medium bg-white/10 w-fit px-3 py-1 rounded-full backdrop-blur-md">
               <TrendingUp size={16} />
-              <span>{stats?.growth || '+4.2%'} from last month</span>
+              <span>{stats?.growth || '0%'} from last month</span>
             </div>
           </div>
           <div className="absolute right-[-20px] bottom-[-20px] opacity-10">
@@ -82,7 +73,7 @@ const Dashboard = () => {
             <span className="text-[10px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full uppercase">Present</span>
           </div>
           <div>
-            <h3 className="font-headline text-3xl font-bold text-on-surface">{stats?.activeToday?.toLocaleString() || '1,102'}</h3>
+            <h3 className="font-headline text-3xl font-bold text-on-surface">{stats?.activeToday?.toLocaleString() || '0'}</h3>
             <p className="font-body text-xs text-on-surface-variant">Active today</p>
           </div>
         </motion.div>
@@ -100,7 +91,7 @@ const Dashboard = () => {
             <span className="text-[10px] font-bold text-error bg-error/5 px-2 py-0.5 rounded-full uppercase">Absent</span>
           </div>
           <div>
-            <h3 className="font-headline text-3xl font-bold text-on-surface">{stats?.absentToday?.toLocaleString() || '32'}</h3>
+            <h3 className="font-headline text-3xl font-bold text-on-surface">{stats?.absentToday?.toLocaleString() || '0'}</h3>
             <p className="font-body text-xs text-on-surface-variant">No show reported</p>
           </div>
         </motion.div>
@@ -117,7 +108,7 @@ const Dashboard = () => {
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {[
-                { icon: FolderOpen, label: 'Directory', path: '/directory' },
+                { icon: FolderOpen, label: 'Employee', path: '/directory' },
                 { icon: Clock, label: 'Attendance', path: '/attendance' },
                 { icon: Umbrella, label: 'Leave Mgmt', path: '/leave' },
                 { icon: BarChart3, label: 'Reports', path: '#' },
@@ -204,28 +195,6 @@ const Dashboard = () => {
             <button className="w-full mt-6 py-3 border border-outline/20 rounded-xl text-sm font-semibold text-on-surface hover:bg-surface-container-lowest transition-colors">
               Manage Calendar
             </button>
-          </div>
-
-          {/* Retention Index */}
-          <div className="bg-primary/5 rounded-2xl p-6 border border-primary/10">
-            <p className="font-body text-xs font-bold text-primary uppercase tracking-widest mb-4">Retention Index</p>
-            <div className="h-32 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={retentionData}>
-                  <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                    {retentionData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={`rgba(0, 61, 155, ${0.2 + (index * 0.15)})`} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="mt-4 pt-4 border-t border-primary/10">
-              <div className="flex justify-between items-center">
-                <span className="text-sm font-medium text-on-surface-variant">Engagement Score</span>
-                <span className="text-lg font-bold text-on-surface">8.4/10</span>
-              </div>
-            </div>
           </div>
         </div>
       </div>

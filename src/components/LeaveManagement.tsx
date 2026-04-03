@@ -9,8 +9,8 @@ const LeaveManagement = () => {
   const [leaves, setLeaves] = useState<Leave[]>([]);
   const [stats, setStats] = useState({
     total: 24,
-    used: 14,
-    remaining: 10
+    used: 0,
+    remaining: 24
   });
 
   useEffect(() => {
@@ -24,7 +24,15 @@ const LeaveManagement = () => {
         return res.json();
       })
       .then(data => {
-        if (Array.isArray(data)) setLeaves(data);
+        if (Array.isArray(data)) {
+          setLeaves(data);
+          const used = data.filter(l => l.status === 'Approved').reduce((acc, l) => acc + (l.days || 0), 0);
+          setStats(prev => ({
+            ...prev,
+            used,
+            remaining: prev.total - used
+          }));
+        }
       })
       .catch(err => {
         console.error('Error fetching leaves:', err);
@@ -127,21 +135,7 @@ const LeaveManagement = () => {
           <div className="bg-surface-container-high/40 p-6 rounded-xl space-y-6">
             <h3 className="font-headline font-bold text-lg text-on-surface">Upcoming Holidays</h3>
             <div className="space-y-4">
-              {[
-                { month: 'Dec', day: '25', title: 'Christmas Day' },
-                { month: 'Jan', day: '01', title: "New Year's Day" },
-              ].map((holiday) => (
-                <div key={holiday.title} className="flex gap-4">
-                  <div className="flex flex-col items-center justify-center bg-surface-container-lowest w-12 h-12 rounded-lg shrink-0">
-                    <span className="text-[10px] font-bold uppercase text-on-surface-variant">{holiday.month}</span>
-                    <span className="text-lg font-bold text-primary">{holiday.day}</span>
-                  </div>
-                  <div>
-                    <h4 className="font-body font-semibold text-sm">{holiday.title}</h4>
-                    <p className="text-xs text-on-surface-variant">Office Closed</p>
-                  </div>
-                </div>
-              ))}
+              <p className="text-xs text-on-surface-variant italic">No upcoming holidays scheduled.</p>
             </div>
             <div className="pt-4 border-t border-outline-variant/10">
               <button className="text-primary font-body font-bold text-xs flex items-center gap-1 hover:underline">

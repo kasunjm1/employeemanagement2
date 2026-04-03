@@ -64,7 +64,7 @@ const EmployeeProfile = () => {
     <div className="max-w-6xl mx-auto space-y-8">
       {/* Breadcrumbs */}
       <nav className="flex items-center gap-2 text-on-surface-variant text-sm mb-6 font-medium">
-        <Link to="/directory" className="hover:text-primary">Directory</Link>
+        <Link to="/directory" className="hover:text-primary">Employee</Link>
         <ChevronRight size={14} />
         <span className="text-primary">Employee Profile</span>
       </nav>

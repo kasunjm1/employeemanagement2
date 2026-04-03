@@ -18,7 +18,7 @@ import { Link } from 'react-router-dom';
 const modules = [
   { 
     id: 'directory', 
-    label: 'Employee Directory', 
+    label: 'Employee', 
     description: 'Manage staff profiles and organization structure',
     icon: Users, 
     path: '/directory',

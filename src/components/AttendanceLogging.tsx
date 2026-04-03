@@ -8,9 +8,15 @@ import { fetchWithAuth } from '@/src/lib/api';
 const AttendanceLogging = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [recentLogs, setRecentLogs] = useState<Attendance[]>([]);
+  const [sections, setSections] = useState<{id: number, name: string}[]>([]);
+  const [stats, setStats] = useState({
+    present: 0,
+    late: 0,
+    absent: 0
+  });
   const [formData, setFormData] = useState({
     employee_id: '',
-    section: 'Production Wing A',
+    section: '',
     check_in: '',
     check_out: '',
     date: new Date().toISOString().split('T')[0]
@@ -37,6 +43,22 @@ const AttendanceLogging = () => {
 
     handleFetch('/api/employees', setEmployees);
     handleFetch('/api/attendance', (data) => setRecentLogs(data.slice(0, 5)));
+    handleFetch('/api/sections', (data) => {
+      setSections(data);
+      if (data.length > 0) setFormData(prev => ({ ...prev, section: data[0].name }));
+    });
+    
+    fetchWithAuth('/api/stats')
+      .then(res => res.json())
+      .then(data => {
+        if (data && !data.error) {
+          setStats({
+            present: data.activeToday || 0,
+            late: 0, // No late stat in API yet
+            absent: data.absentToday || 0
+          });
+        }
+      });
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -99,7 +121,7 @@ const AttendanceLogging = () => {
             
             <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-10">
               <div className="md:col-span-2 space-y-3">
-                <label className="block font-body text-[11px] font-bold text-on-surface-variant uppercase tracking-widest">Select Staff Member</label>
+                <label className="block font-body text-[11px] font-bold text-on-surface-variant uppercase tracking-widest">Select Employee</label>
                 <select 
                   required
                   value={formData.employee_id}
@@ -121,10 +143,7 @@ const AttendanceLogging = () => {
                     onChange={(e) => setFormData({ ...formData, section: e.target.value })}
                     className="w-full bg-surface-container-highest border-none rounded-xl px-4 py-4 text-on-surface font-medium focus:ring-2 focus:ring-primary focus:bg-surface-container-lowest transition-all appearance-none"
                   >
-                    <option>Production Wing A</option>
-                    <option>Receiving Dock</option>
-                    <option>Inventory - South</option>
-                    <option>Admin HQ</option>
+                    {sections.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                   </select>
                   <Factory className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-outline" size={20} />
                 </div>
@@ -172,9 +191,9 @@ const AttendanceLogging = () => {
             <h3 className="font-headline font-bold text-lg text-on-surface">Real-time Pulse</h3>
             <div className="space-y-4">
               {[
-                { label: 'Present', value: 42, icon: CheckCircle2, color: 'bg-emerald-100 text-emerald-700' },
-                { label: 'Late Arrival', value: 3, icon: Clock, color: 'bg-amber-100 text-amber-700' },
-                { label: 'Absent', value: 5, icon: XCircle, color: 'bg-rose-100 text-rose-700' },
+                { label: 'Present', value: stats.present, icon: CheckCircle2, color: 'bg-emerald-100 text-emerald-700' },
+                { label: 'Late Arrival', value: stats.late, icon: Clock, color: 'bg-amber-100 text-amber-700' },
+                { label: 'Absent', value: stats.absent, icon: XCircle, color: 'bg-rose-100 text-rose-700' },
               ].map((stat) => (
                 <div key={stat.label} className="bg-surface-container-lowest p-5 rounded-2xl flex items-center justify-between">
                   <div className="flex items-center gap-3">

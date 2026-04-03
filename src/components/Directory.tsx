@@ -206,7 +206,7 @@ const Directory = () => {
       <section className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div className="space-y-2">
           <span className="font-body text-[11px] font-semibold tracking-widest uppercase text-on-surface-variant">Organization</span>
-          <h2 className="text-4xl font-extrabold font-headline tracking-tight text-on-surface">Employee Directory</h2>
+          <h2 className="text-4xl font-extrabold font-headline tracking-tight text-on-surface">Employee</h2>
           <p className="text-on-surface-variant max-w-md font-body leading-relaxed">Manage and view all personnel across the organization.</p>
         </div>
         <button 

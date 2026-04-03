@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Settings as SettingsIcon, Users, Building2, Shield } from 'lucide-react';
+import { Plus, Trash2, Settings as SettingsIcon, Users, Building2, Shield, Pencil } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Role, Section, User } from '@/src/types';
 
@@ -9,8 +9,23 @@ const Settings = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [newRole, setNewRole] = useState('');
   const [newSection, setNewSection] = useState('');
+  const [editingRole, setEditingRole] = useState<Role | null>(null);
+  const [editingSection, setEditingSection] = useState<Section | null>(null);
+  
+  const [showUserModal, setShowUserModal] = useState(false);
+  const [userModalMode, setUserModalMode] = useState<'add' | 'edit'>('add');
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [userFormData, setUserFormData] = useState({
+    email: '',
+    password: '',
+    name: '',
+    role: 'standard',
+    account_id: ''
+  });
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [accounts, setAccounts] = useState<{id: number, name: string}[]>([]);
 
   const user = JSON.parse(localStorage.getItem('ems_user') || '{}');
 
@@ -32,6 +47,11 @@ const Settings = () => {
       if (rolesRes.ok) setRoles(await rolesRes.json());
       if (sectionsRes.ok) setSections(await sectionsRes.json());
       if (usersRes.ok) setUsers(await usersRes.json());
+
+      if (user.role === 'super_admin') {
+        const accountsRes = await fetch('/api/accounts', { headers: getHeaders() });
+        if (accountsRes.ok) setAccounts(await accountsRes.json());
+      }
     } catch (err) {
       setError('Failed to load settings data');
     } finally {
@@ -105,6 +125,111 @@ const Settings = () => {
     }
   };
 
+  const handleUpdateRole = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingRole || !editingRole.name.trim()) return;
+    try {
+      const res = await fetch(`/api/roles/${editingRole.id}`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify({ name: editingRole.name })
+      });
+      if (res.ok) {
+        setEditingRole(null);
+        fetchData();
+      }
+    } catch (err) {
+      setError('Failed to update role');
+    }
+  };
+
+  const handleUpdateSection = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingSection || !editingSection.name.trim()) return;
+    try {
+      const res = await fetch(`/api/sections/${editingSection.id}`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify({ name: editingSection.name })
+      });
+      if (res.ok) {
+        setEditingSection(null);
+        fetchData();
+      }
+    } catch (err) {
+      setError('Failed to update section');
+    }
+  };
+
+  const handleUserSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const url = userModalMode === 'add' ? '/api/users' : `/api/users/${editingUser?.id}`;
+      const method = userModalMode === 'add' ? 'POST' : 'PUT';
+      
+      const payload = { ...userFormData };
+      if (userModalMode === 'edit' && user.role !== 'super_admin') {
+        delete (payload as any).password;
+      } else if (userModalMode === 'edit' && user.role === 'super_admin' && !payload.password) {
+        delete (payload as any).password;
+      }
+
+      const res = await fetch(url, {
+        method,
+        headers: getHeaders(),
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        setShowUserModal(false);
+        fetchData();
+      } else {
+        const data = await res.json();
+        setError(data.error || 'Failed to save user');
+      }
+    } catch (err) {
+      setError('An error occurred');
+    }
+  };
+
+  const handleDeleteUser = async (id: number) => {
+    if (!confirm('Are you sure you want to delete this user?')) return;
+    try {
+      const res = await fetch(`/api/users/${id}`, {
+        method: 'DELETE',
+        headers: getHeaders()
+      });
+      if (res.ok) fetchData();
+    } catch (err) {
+      setError('Failed to delete user');
+    }
+  };
+
+  const openAddUser = () => {
+    setUserModalMode('add');
+    setUserFormData({
+      email: '',
+      password: '',
+      name: '',
+      role: 'standard',
+      account_id: user.account_id?.toString() || ''
+    });
+    setShowUserModal(true);
+  };
+
+  const openEditUser = (u: User) => {
+    setUserModalMode('edit');
+    setEditingUser(u);
+    setUserFormData({
+      email: u.email,
+      password: '',
+      name: u.name,
+      role: u.role,
+      account_id: u.account_id?.toString() || ''
+    });
+    setShowUserModal(true);
+  };
+
   if (loading) return <div className="p-8 text-center">Loading settings...</div>;
 
   return (
@@ -153,13 +278,37 @@ const Settings = () => {
           <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
             {roles.map((role) => (
               <div key={role.id} className="flex items-center justify-between p-3 bg-surface-container-low rounded-xl group">
-                <span className="text-sm font-medium text-on-surface">{role.name}</span>
-                <button 
-                  onClick={() => handleDeleteRole(role.id)}
-                  className="p-1.5 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
-                >
-                  <Trash2 size={16} />
-                </button>
+                {editingRole?.id === role.id ? (
+                  <form onSubmit={handleUpdateRole} className="flex-1 flex gap-2">
+                    <input 
+                      type="text"
+                      value={editingRole.name}
+                      onChange={(e) => setEditingRole({ ...editingRole, name: e.target.value })}
+                      className="flex-1 bg-white border border-primary rounded-lg px-2 py-1 text-sm focus:outline-none"
+                      autoFocus
+                    />
+                    <button type="submit" className="text-primary font-bold text-xs">Save</button>
+                    <button type="button" onClick={() => setEditingRole(null)} className="text-on-surface-variant text-xs">Cancel</button>
+                  </form>
+                ) : (
+                  <>
+                    <span className="text-sm font-medium text-on-surface">{role.name}</span>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                      <button 
+                        onClick={() => setEditingRole(role)}
+                        className="p-1.5 text-on-surface-variant hover:text-primary hover:bg-primary/10 rounded-lg"
+                      >
+                        <Pencil size={16} />
+                      </button>
+                      <button 
+                        onClick={() => handleDeleteRole(role.id)}
+                        className="p-1.5 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             ))}
           </div>
@@ -193,13 +342,37 @@ const Settings = () => {
           <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
             {sections.map((section) => (
               <div key={section.id} className="flex items-center justify-between p-3 bg-surface-container-low rounded-xl group">
-                <span className="text-sm font-medium text-on-surface">{section.name}</span>
-                <button 
-                  onClick={() => handleDeleteSection(section.id)}
-                  className="p-1.5 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
-                >
-                  <Trash2 size={16} />
-                </button>
+                {editingSection?.id === section.id ? (
+                  <form onSubmit={handleUpdateSection} className="flex-1 flex gap-2">
+                    <input 
+                      type="text"
+                      value={editingSection.name}
+                      onChange={(e) => setEditingSection({ ...editingSection, name: e.target.value })}
+                      className="flex-1 bg-white border border-primary rounded-lg px-2 py-1 text-sm focus:outline-none"
+                      autoFocus
+                    />
+                    <button type="submit" className="text-primary font-bold text-xs">Save</button>
+                    <button type="button" onClick={() => setEditingSection(null)} className="text-on-surface-variant text-xs">Cancel</button>
+                  </form>
+                ) : (
+                  <>
+                    <span className="text-sm font-medium text-on-surface">{section.name}</span>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                      <button 
+                        onClick={() => setEditingSection(section)}
+                        className="p-1.5 text-on-surface-variant hover:text-primary hover:bg-primary/10 rounded-lg"
+                      >
+                        <Pencil size={16} />
+                      </button>
+                      <button 
+                        onClick={() => handleDeleteSection(section.id)}
+                        className="p-1.5 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             ))}
           </div>
@@ -217,7 +390,10 @@ const Settings = () => {
               <Users className="text-primary" size={24} />
               <h2 className="font-headline text-xl font-bold text-on-surface">User Management</h2>
             </div>
-            <button className="flex items-center gap-2 px-4 py-2 bg-primary/10 text-primary rounded-xl font-bold text-sm hover:bg-primary/20 transition-colors">
+            <button 
+              onClick={openAddUser}
+              className="flex items-center gap-2 px-4 py-2 bg-primary/10 text-primary rounded-xl font-bold text-sm hover:bg-primary/20 transition-colors"
+            >
               <Plus size={18} />
               Add User
             </button>
@@ -251,9 +427,20 @@ const Settings = () => {
                     </td>
                     <td className="py-4 px-4 text-sm text-on-surface-variant">{(u as any).account_name || 'N/A'}</td>
                     <td className="py-4 px-4 text-right">
-                      <button className="p-2 text-on-surface-variant hover:text-primary hover:bg-primary/10 rounded-lg transition-all">
-                        <Trash2 size={16} />
-                      </button>
+                      <div className="flex items-center justify-end gap-1">
+                        <button 
+                          onClick={() => openEditUser(u)}
+                          className="p-2 text-on-surface-variant hover:text-primary hover:bg-primary/10 rounded-lg transition-all"
+                        >
+                          <Pencil size={16} />
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteUser(u.id)}
+                          className="p-2 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg transition-all"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -262,6 +449,94 @@ const Settings = () => {
           </div>
         </motion.div>
       </div>
+      {/* User Modal */}
+      {showUserModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-on-surface/40 backdrop-blur-sm">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-[2rem] p-8 w-full max-w-md shadow-2xl"
+          >
+            <h3 className="font-headline text-2xl font-bold mb-6">{userModalMode === 'add' ? 'Add New User' : 'Edit User'}</h3>
+            <form onSubmit={handleUserSubmit} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-on-surface-variant uppercase">Full Name</label>
+                <input 
+                  type="text"
+                  required
+                  value={userFormData.name}
+                  onChange={(e) => setUserFormData({ ...userFormData, name: e.target.value })}
+                  className="w-full bg-surface-container-low border-none rounded-xl px-4 py-2 text-sm"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-on-surface-variant uppercase">Email Address</label>
+                <input 
+                  type="email"
+                  required
+                  value={userFormData.email}
+                  onChange={(e) => setUserFormData({ ...userFormData, email: e.target.value })}
+                  className="w-full bg-surface-container-low border-none rounded-xl px-4 py-2 text-sm"
+                />
+              </div>
+              {(userModalMode === 'add' || user.role === 'super_admin') && (
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-on-surface-variant uppercase">
+                    {userModalMode === 'add' ? 'Password' : 'New Password (leave blank to keep current)'}
+                  </label>
+                  <input 
+                    type="password"
+                    required={userModalMode === 'add'}
+                    value={userFormData.password}
+                    onChange={(e) => setUserFormData({ ...userFormData, password: e.target.value })}
+                    className="w-full bg-surface-container-low border-none rounded-xl px-4 py-2 text-sm"
+                  />
+                </div>
+              )}
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-on-surface-variant uppercase">System Role</label>
+                <select 
+                  value={userFormData.role}
+                  onChange={(e) => setUserFormData({ ...userFormData, role: e.target.value })}
+                  className="w-full bg-surface-container-low border-none rounded-xl px-4 py-2 text-sm"
+                >
+                  <option value="standard">Standard User</option>
+                  <option value="admin">Administrator</option>
+                  {user.role === 'super_admin' && <option value="super_admin">Super Admin</option>}
+                </select>
+              </div>
+              {user.role === 'super_admin' && (
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-on-surface-variant uppercase">Account Assignment</label>
+                  <select 
+                    value={userFormData.account_id}
+                    onChange={(e) => setUserFormData({ ...userFormData, account_id: e.target.value })}
+                    className="w-full bg-surface-container-low border-none rounded-xl px-4 py-2 text-sm"
+                  >
+                    <option value="">Select Account</option>
+                    {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                </div>
+              )}
+              <div className="flex gap-4 pt-4">
+                <button 
+                  type="button" 
+                  onClick={() => setShowUserModal(false)}
+                  className="flex-1 py-2 rounded-xl font-bold text-on-surface-variant hover:bg-surface-container transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit"
+                  className="flex-1 py-2 bg-primary text-on-primary rounded-xl font-bold shadow-lg"
+                >
+                  {userModalMode === 'add' ? 'Create User' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 };

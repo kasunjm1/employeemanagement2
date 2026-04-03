@@ -296,6 +296,18 @@ const authenticate = (req: any, res: any, next: any) => {
     }
   });
 
+  app.put("/api/roles/:id", authenticate, async (req: any, res) => {
+    const { account_id } = req.user;
+    const { name } = req.body;
+    try {
+      const result = await query("UPDATE e_roles SET name = $1 WHERE id = $2 AND account_id = $3 AND deleted_at IS NULL RETURNING *", [name, req.params.id, account_id]);
+      if (result.rows.length === 0) return res.status(404).json({ error: "Role not found" });
+      res.json(result.rows[0]);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to update role" });
+    }
+  });
+
   app.delete("/api/roles/:id", authenticate, async (req: any, res) => {
     const { account_id } = req.user;
     try {
@@ -324,6 +336,18 @@ const authenticate = (req: any, res: any, next: any) => {
       res.json(result.rows[0]);
     } catch (err) {
       res.status(500).json({ error: "Failed to add section" });
+    }
+  });
+
+  app.put("/api/sections/:id", authenticate, async (req: any, res) => {
+    const { account_id } = req.user;
+    const { name } = req.body;
+    try {
+      const result = await query("UPDATE e_sections SET name = $1 WHERE id = $2 AND account_id = $3 AND deleted_at IS NULL RETURNING *", [name, req.params.id, account_id]);
+      if (result.rows.length === 0) return res.status(404).json({ error: "Section not found" });
+      res.json(result.rows[0]);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to update section" });
     }
   });
 
@@ -557,7 +581,7 @@ const authenticate = (req: any, res: any, next: any) => {
     try {
       let finalAccountId = account_id;
       if (role === 'super_admin') {
-        finalAccountId = targetAccountId;
+        finalAccountId = targetAccountId ? parseInt(targetAccountId) : account_id;
       } else if (role !== 'admin') {
         return res.status(403).json({ error: "Forbidden" });
       }
@@ -568,24 +592,42 @@ const authenticate = (req: any, res: any, next: any) => {
       );
       res.json(result.rows[0]);
     } catch (err) {
+      console.error("Error creating user:", err);
       res.status(500).json({ error: "Failed to create user" });
     }
   });
 
   app.put("/api/users/:id", authenticate, async (req: any, res) => {
     const { account_id, role } = req.user;
-    const { email, name, role: newUserRole, account_id: targetAccountId } = req.body;
+    const { email, name, role: newUserRole, account_id: targetAccountId, password } = req.body;
     
     try {
       let q = "UPDATE e_users SET email = $1, name = $2, role = $3";
-      let params = [email, name, newUserRole];
+      let params: any[] = [email, name, newUserRole];
+      let paramCount = 3;
       
       if (role === 'super_admin') {
-        q += ", account_id = $4 WHERE id = $5 AND deleted_at IS NULL RETURNING *";
-        params.push(targetAccountId, req.params.id);
+        if (password) {
+          paramCount++;
+          q += `, password = $${paramCount}`;
+          params.push(password);
+        }
+        paramCount++;
+        const finalAccountId = targetAccountId ? parseInt(targetAccountId) : account_id;
+        q += `, account_id = $${paramCount}`;
+        params.push(finalAccountId);
+        
+        paramCount++;
+        q += ` WHERE id = $${paramCount} AND deleted_at IS NULL RETURNING *`;
+        params.push(req.params.id);
       } else if (role === 'admin') {
-        q += " WHERE id = $4 AND account_id = $5 AND deleted_at IS NULL RETURNING *";
-        params.push(req.params.id, account_id);
+        paramCount++;
+        q += ` WHERE id = $${paramCount}`;
+        params.push(req.params.id);
+        
+        paramCount++;
+        q += ` AND account_id = $${paramCount} AND deleted_at IS NULL RETURNING *`;
+        params.push(account_id);
       } else {
         return res.status(403).json({ error: "Forbidden" });
       }
@@ -594,6 +636,7 @@ const authenticate = (req: any, res: any, next: any) => {
       if (result.rows.length === 0) return res.status(404).json({ error: "User not found" });
       res.json(result.rows[0]);
     } catch (err) {
+      console.error("Error updating user:", err);
       res.status(500).json({ error: "Failed to update user" });
     }
   });

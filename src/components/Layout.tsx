@@ -10,7 +10,7 @@ const Sidebar = ({ onLogout }: { onLogout?: () => void }) => {
   const navItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
     { icon: Grid, label: 'Modules', path: '/modules' },
-    { icon: Users, label: 'Directory', path: '/directory' },
+    { icon: Users, label: 'Employee', path: '/directory' },
     { icon: Timer, label: 'Attendance', path: '/attendance' },
     { icon: CalendarOff, label: 'Leave', path: '/leave' },
   ];
@@ -83,7 +83,7 @@ const TopBar = ({ onLogout }: { onLogout?: () => void }) => {
         <div className="flex items-center gap-6">
           <nav className="hidden md:flex gap-8">
             <NavLink to="/" className="text-blue-700 dark:text-blue-400 font-semibold transition-colors">Dashboard</NavLink>
-            <NavLink to="/directory" className="text-slate-500 dark:text-slate-400 hover:text-blue-700 transition-colors">Staff</NavLink>
+            <NavLink to="/directory" className="text-slate-500 dark:text-slate-400 hover:text-blue-700 transition-colors">Employee</NavLink>
             {user.role !== 'standard' && (
               <NavLink to="/settings" className="text-slate-500 dark:text-slate-400 hover:text-blue-700 transition-colors">Settings</NavLink>
             )}
@@ -108,7 +108,7 @@ const TopBar = ({ onLogout }: { onLogout?: () => void }) => {
 const BottomNav = () => {
   const navItems = [
     { icon: LayoutDashboard, label: 'Home', path: '/' },
-    { icon: Users, label: 'Staff', path: '/directory' },
+    { icon: Users, label: 'Employee', path: '/directory' },
     { icon: Timer, label: 'Logs', path: '/attendance' },
     { icon: CalendarOff, label: 'Leave', path: '/leave' },
   ];
