@@ -1,26 +1,31 @@
 import React, { useEffect, useState } from 'react';
-import { UserPlus, Calendar, CheckCircle2, Clock, XCircle, ChevronRight, Factory, LogIn, LogOut, Users } from 'lucide-react';
+import { UserPlus, Calendar, CheckCircle2, Clock, XCircle, ChevronRight, Briefcase, LogIn, LogOut, Users, Fingerprint, RefreshCw } from 'lucide-react';
 import { motion } from 'motion/react';
-import { Employee, Attendance } from '@/src/types';
+import { Employee, Attendance, Project } from '@/src/types';
 import { cn, formatTime } from '@/src/lib/utils';
 import { fetchWithAuth } from '@/src/lib/api';
 
 const AttendanceLogging = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [recentLogs, setRecentLogs] = useState<Attendance[]>([]);
-  const [sections, setSections] = useState<{id: number, name: string}[]>([]);
-  const [stats, setStats] = useState({
-    present: 0,
-    late: 0,
-    absent: 0
-  });
+  const [historyLogs, setHistoryLogs] = useState<Attendance[]>([]);
+  const [historyDate, setHistoryDate] = useState(new Date().toISOString().split('T')[0]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [formData, setFormData] = useState({
+    id: null as number | null,
     employee_id: '',
     section_id: 0,
+    project_id: 0,
     check_in: '',
     check_out: '',
     date: new Date().toISOString().split('T')[0]
   });
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showSearchResults, setShowSearchResults] = useState(false);
+  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+  const [fingerprintId, setFingerprintId] = useState('');
+  const [fingerprintStatus, setFingerprintStatus] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+  const [isFingerprintLoading, setIsFingerprintLoading] = useState(false);
 
   useEffect(() => {
     const handleFetch = (url: string, setter: (data: any) => void) => {
@@ -42,33 +47,67 @@ const AttendanceLogging = () => {
     };
 
     handleFetch('/api/employees', setEmployees);
-    handleFetch('/api/attendance', (data) => setRecentLogs(data.slice(0, 5)));
-    handleFetch('/api/sections', (data) => {
-      setSections(data);
-      if (data.length > 0) setFormData(prev => ({ ...prev, section_id: data[0].id }));
+    
+    const fetchHistory = (date: string) => {
+      fetchWithAuth(`/api/attendance?date=${date}`)
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) {
+            const unique = data.reduce((acc: Attendance[], current: Attendance) => {
+              if (!acc.find(item => item.id === current.id)) return acc.concat([current]);
+              return acc;
+            }, []);
+            setHistoryLogs(unique);
+          }
+        });
+    };
+
+    fetchHistory(historyDate);
+    
+    handleFetch('/api/projects', (data) => {
+      setProjects(data);
     });
     
-    fetchWithAuth('/api/stats')
-      .then(res => res.json())
-      .then(data => {
-        if (data && !data.error) {
-          setStats({
-            present: data.activeToday || 0,
-            late: 0, // No late stat in API yet
-            absent: data.absentToday || 0
-          });
-        }
-      });
-  }, []);
+    const handleClickOutside = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest('.employee-search-container')) {
+        setShowSearchResults(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [historyDate]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const getISTTime = () => {
+    return new Date().toLocaleTimeString('en-US', { 
+      timeZone: 'Asia/Kolkata', 
+      hour12: false, 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    });
+  };
+
+  const handleSubmit = async (e?: React.FormEvent, type?: 'in' | 'out') => {
+    if (e) e.preventDefault();
+    
+    const dataToSubmit = { ...formData };
+    const currentTime = getISTTime();
+
+    if (type === 'in' && !dataToSubmit.check_in) {
+      dataToSubmit.check_in = currentTime;
+    } else if (type === 'out' && !dataToSubmit.check_out) {
+      dataToSubmit.check_out = currentTime;
+    }
+
     try {
-      const res = await fetchWithAuth('/api/attendance', {
-        method: 'POST',
+      const url = dataToSubmit.id ? `/api/attendance/${dataToSubmit.id}` : '/api/attendance';
+      const method = dataToSubmit.id ? 'PUT' : 'POST';
+      
+      const res = await fetchWithAuth(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...formData,
+          ...dataToSubmit,
           status: 'Present'
         })
       });
@@ -76,8 +115,34 @@ const AttendanceLogging = () => {
         const contentType = res.headers.get('content-type');
         if (contentType && contentType.includes('application/json')) {
           const newLog = await res.json();
-          setRecentLogs([newLog, ...recentLogs].slice(0, 5));
-          setFormData({ ...formData, employee_id: '', check_in: '', check_out: '' });
+          
+          // Refresh history and stats
+          const fetchHistory = (date: string) => {
+            fetchWithAuth(`/api/attendance?date=${date}`)
+              .then(res => res.json())
+              .then(data => {
+                if (Array.isArray(data)) {
+                  const unique = data.reduce((acc: Attendance[], current: Attendance) => {
+                    if (!acc.find(item => item.id === current.id)) return acc.concat([current]);
+                    return acc;
+                  }, []);
+                  setHistoryLogs(unique);
+                }
+              });
+          };
+          fetchHistory(historyDate);
+
+          setFormData({ 
+            id: null,
+            employee_id: '', 
+            section_id: 0,
+            project_id: 0, 
+            check_in: '', 
+            check_out: '',
+            date: new Date().toISOString().split('T')[0]
+          });
+          setSearchTerm('');
+          setSelectedEmployee(null);
         }
       }
     } catch (err) {
@@ -85,146 +150,392 @@ const AttendanceLogging = () => {
     }
   };
 
+  const handleEmployeeSelect = async (emp: Employee) => {
+    setSearchTerm(`${emp.name} (${emp.employee_id})`);
+    setShowSearchResults(false);
+    setSelectedEmployee(emp);
+    
+    try {
+      const res = await fetchWithAuth(`/api/employees/${emp.employee_id}/attendance-status`);
+      const data = await res.json();
+      
+      setFormData(prev => ({
+        ...prev,
+        employee_id: emp.employee_id,
+        section_id: data.last_section_id || 0,
+        project_id: data.last_project_id || 0,
+        id: data.today?.id || null,
+        check_in: data.today?.check_in || '',
+        check_out: data.today?.check_out || ''
+      }));
+    } catch (err) {
+      console.error('Error fetching employee status:', err);
+      setFormData(prev => ({ ...prev, employee_id: emp.employee_id, section_id: 0, project_id: 0 }));
+    }
+  };
+
+  const filteredEmployees = employees.filter(emp => 
+    emp.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    emp.employee_id.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const handleFingerprintScan = async () => {
+    if (!fingerprintId) return;
+    setIsFingerprintLoading(true);
+    setFingerprintStatus(null);
+    try {
+      const res = await fetchWithAuth('/api/attendance/fingerprint', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employee_id: fingerprintId })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setFingerprintStatus({ message: data.message, type: 'success' });
+        setRecentLogs(prev => {
+          const filtered = prev.filter(log => log.id !== data.data.id);
+          return [data.data, ...filtered].slice(0, 5);
+        });
+        setFingerprintId('');
+      } else {
+        setFingerprintStatus({ message: data.error || 'Scan failed', type: 'error' });
+      }
+    } catch (err) {
+      setFingerprintStatus({ message: 'Connection error', type: 'error' });
+    } finally {
+      setIsFingerprintLoading(false);
+    }
+  };
+
   return (
-    <div className="max-w-7xl mx-auto space-y-10">
-      <section className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-        <div className="space-y-2">
-          <span className="font-body text-[11px] font-semibold tracking-widest uppercase text-on-surface-variant">Daily Operations</span>
-          <h2 className="text-4xl font-extrabold font-headline tracking-tight text-on-surface">Daily Attendance Logging</h2>
-          <p className="text-on-surface-variant max-w-md font-body leading-relaxed">Swiftly record entry and exit times for on-site personnel with section assignment.</p>
+    <div className="max-w-7xl mx-auto space-y-6">
+      <section className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div className="space-y-1">
+          <h2 className="text-3xl font-extrabold font-headline tracking-tight text-on-surface">Attendance Management</h2>
+          <p className="text-on-surface-variant text-sm font-body">Manage daily attendance records via manual entry or fingerprint scan.</p>
         </div>
-        <div className="flex items-center gap-3 bg-surface-container-low px-5 py-3 rounded-2xl">
-          <Calendar className="text-primary" size={20} />
+        <div className="flex items-center gap-3 bg-surface-container-low px-4 py-2 rounded-xl border border-outline-variant">
+          <Calendar className="text-primary" size={18} />
           <div className="flex flex-col">
-            <span className="text-xs font-bold font-body text-on-surface-variant uppercase tracking-tighter">Current Shift Date</span>
-            <span className="text-sm font-bold text-on-surface">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}</span>
+            <label className="text-[8px] font-bold text-on-surface-variant uppercase tracking-tighter leading-none">Logging Date</label>
+            <input 
+              type="date"
+              value={formData.date}
+              onChange={(e) => {
+                setFormData({ ...formData, date: e.target.value });
+                setHistoryDate(e.target.value);
+              }}
+              className="bg-transparent border-none text-sm font-bold text-on-surface focus:ring-0 p-0 h-5 w-32 cursor-pointer"
+            />
           </div>
         </div>
       </section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        <div className="lg:col-span-8 space-y-8">
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-surface-container-lowest rounded-[2rem] p-8 shadow-[0_12px_32px_-4px_rgba(25,28,30,0.04)]"
-          >
-            <div className="flex items-center justify-between mb-10">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-primary-container flex items-center justify-center">
-                  <UserPlus className="text-white" size={24} />
+      <div className="grid grid-cols-1 gap-6">
+        {/* Compact Entry Form */}
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-surface-container-lowest rounded-3xl p-6 shadow-sm border border-outline-variant"
+        >
+          <div className="flex flex-col lg:flex-row gap-6 items-start">
+            {/* Employee Selection & Search */}
+            <div className="w-full lg:w-1/3 flex items-center gap-4">
+              <div className="w-16 h-16 rounded-2xl overflow-hidden border-2 border-primary/10 flex-shrink-0 bg-surface-container-high">
+                {selectedEmployee ? (
+                  <img 
+                    src={selectedEmployee.avatar_url || `https://picsum.photos/seed/${selectedEmployee.employee_id}/200/200`} 
+                    alt={selectedEmployee.name} 
+                    className="w-full h-full object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-outline">
+                    <Users size={24} />
+                  </div>
+                )}
+              </div>
+              <div className="flex-1 relative employee-search-container">
+                <label className="block text-[10px] font-bold text-on-surface-variant uppercase tracking-wider mb-1">Employee Search / Scan</label>
+                <div className="relative">
+                  <input 
+                    type="text"
+                    placeholder="Search name, ID or Scan..."
+                    value={searchTerm}
+                    onChange={(e) => {
+                      setSearchTerm(e.target.value);
+                      setShowSearchResults(true);
+                      if (!e.target.value) {
+                        setFormData({ 
+                          id: null,
+                          employee_id: '', 
+                          section_id: 0,
+                          project_id: 0, 
+                          check_in: '', 
+                          check_out: '',
+                          date: new Date().toISOString().split('T')[0]
+                        });
+                        setSelectedEmployee(null);
+                      }
+                    }}
+                    onFocus={() => setShowSearchResults(true)}
+                    className="w-full bg-surface-container-highest border-none rounded-xl pl-3 pr-10 py-3 text-sm font-medium focus:ring-2 focus:ring-primary transition-all"
+                  />
+                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                    {searchTerm && (
+                      <button onClick={() => { setSearchTerm(''); setSelectedEmployee(null); }} className="text-outline hover:text-primary p-1">
+                        <XCircle size={16} />
+                      </button>
+                    )}
+                    <button 
+                      onClick={() => {
+                        if (searchTerm) {
+                          setFingerprintId(searchTerm);
+                          handleFingerprintScan();
+                        }
+                      }}
+                      className="text-primary hover:bg-primary/10 p-1 rounded-lg transition-colors"
+                      title="Quick Scan"
+                    >
+                      <Fingerprint size={18} />
+                    </button>
+                  </div>
                 </div>
-                <h3 className="text-xl font-bold">New Entry</h3>
+                
+                {showSearchResults && searchTerm && filteredEmployees.length > 0 && (
+                  <div className="absolute z-20 w-full mt-2 bg-surface-container-lowest border border-outline-variant rounded-xl shadow-xl max-h-48 overflow-y-auto">
+                    {filteredEmployees.map(emp => (
+                      <div 
+                        key={emp.employee_id}
+                        onClick={() => handleEmployeeSelect(emp)}
+                        className="px-4 py-3 hover:bg-surface-container-high cursor-pointer flex items-center gap-3 border-b border-outline-variant last:border-none"
+                      >
+                        <img 
+                          src={emp.avatar_url || `https://picsum.photos/seed/${emp.employee_id}/200/200`} 
+                          alt={emp.name} 
+                          className="w-8 h-8 rounded-full object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                        <div className="flex flex-col">
+                          <span className="text-sm font-bold text-on-surface">{emp.name}</span>
+                          <span className="text-[10px] text-on-surface-variant">{emp.employee_id}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-              <span className="px-3 py-1 bg-surface-container-high rounded-full text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Manual Override</span>
             </div>
-            
-            <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-10">
-              <div className="md:col-span-2 space-y-3">
-                <label className="block font-body text-[11px] font-bold text-on-surface-variant uppercase tracking-widest">Select Employee</label>
-                <select 
-                  required
-                  value={formData.employee_id}
-                  onChange={(e) => setFormData({ ...formData, employee_id: e.target.value })}
-                  className="w-full bg-surface-container-highest border-none rounded-xl px-4 py-4 text-on-surface font-medium focus:ring-2 focus:ring-primary focus:bg-surface-container-lowest transition-all"
-                >
-                  <option value="">Search or select staff...</option>
-                  {employees.map(emp => (
-                    <option key={emp.employee_id} value={emp.employee_id}>{emp.name} - {emp.section}</option>
-                  ))}
-                </select>
-              </div>
 
-              <div className="space-y-3">
-                <label className="block font-body text-[11px] font-bold text-on-surface-variant uppercase tracking-widest">Working Section</label>
+            {/* Form Fields */}
+            <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-4 w-full">
+              <div className="space-y-1">
+                <label className="block text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Working Project</label>
                 <div className="relative">
                   <select 
-                    value={formData.section_id}
-                    onChange={(e) => setFormData({ ...formData, section_id: parseInt(e.target.value) })}
-                    className="w-full bg-surface-container-highest border-none rounded-xl px-4 py-4 text-on-surface font-medium focus:ring-2 focus:ring-primary focus:bg-surface-container-lowest transition-all appearance-none"
+                    value={formData.project_id || 0}
+                    onChange={(e) => setFormData({ ...formData, project_id: parseInt(e.target.value) })}
+                    className="w-full bg-surface-container-highest border-none rounded-xl pl-3 pr-8 py-3 text-sm font-medium focus:ring-2 focus:ring-primary appearance-none"
                   >
-                    {sections.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    <option value="0">Select Project</option>
+                    {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
-                  <Factory className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-outline" size={20} />
+                  <Briefcase className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-outline" size={16} />
                 </div>
               </div>
 
-              <div className="hidden md:block"></div>
-
-              <div className="space-y-3">
-                <label className="block font-body text-[11px] font-bold text-on-surface-variant uppercase tracking-widest">In Time</label>
-                <div className="relative">
-                  <input 
-                    type="time"
-                    value={formData.check_in}
-                    onChange={(e) => setFormData({ ...formData, check_in: e.target.value })}
-                    className="w-full bg-surface-container-highest border-none rounded-xl px-4 py-4 text-on-surface font-medium focus:ring-2 focus:ring-primary focus:bg-surface-container-lowest transition-all"
-                  />
-                  <LogIn className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-outline" size={20} />
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <label className="block font-body text-[11px] font-bold text-on-surface-variant uppercase tracking-widest">Out Time</label>
-                <div className="relative">
-                  <input 
-                    type="time"
-                    value={formData.check_out}
-                    onChange={(e) => setFormData({ ...formData, check_out: e.target.value })}
-                    className="w-full bg-surface-container-highest border-none rounded-xl px-4 py-4 text-on-surface font-medium focus:ring-2 focus:ring-primary focus:bg-surface-container-lowest transition-all"
-                  />
-                  <LogOut className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-outline" size={20} />
-                </div>
-              </div>
-
-              <div className="md:col-span-2 pt-6 flex justify-end">
-                <button type="submit" className="bg-gradient-to-br from-primary to-primary-container text-on-primary px-10 py-4 rounded-xl font-bold tracking-tight shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all">
-                  Save Entry
-                </button>
-              </div>
-            </form>
-          </motion.div>
-        </div>
-
-        <div className="lg:col-span-4 space-y-8">
-          <div className="bg-surface-container-low rounded-[2rem] p-8 space-y-6">
-            <h3 className="font-headline font-bold text-lg text-on-surface">Real-time Pulse</h3>
-            <div className="space-y-4">
-              {[
-                { label: 'Present', value: stats.present, icon: CheckCircle2, color: 'bg-emerald-100 text-emerald-700' },
-                { label: 'Late Arrival', value: stats.late, icon: Clock, color: 'bg-amber-100 text-amber-700' },
-                { label: 'Absent', value: stats.absent, icon: XCircle, color: 'bg-rose-100 text-rose-700' },
-              ].map((stat) => (
-                <div key={stat.label} className="bg-surface-container-lowest p-5 rounded-2xl flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className={cn("w-10 h-10 rounded-full flex items-center justify-center", stat.color)}>
-                      <stat.icon size={20} />
+              <div className="space-y-1">
+                <label className="block text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">In Time (IST)</label>
+                <div className="flex flex-col gap-2">
+                  <div className="flex gap-1">
+                    <div className="relative flex-1">
+                      <input 
+                        type="time"
+                        value={formData.check_in}
+                        onChange={(e) => setFormData({ ...formData, check_in: e.target.value })}
+                        className="w-full bg-surface-container-highest border-none rounded-xl px-3 py-3 text-sm font-medium focus:ring-2 focus:ring-primary"
+                      />
                     </div>
-                    <span className="text-sm font-semibold text-on-surface">{stat.label}</span>
+                    <button 
+                      type="button"
+                      onClick={() => setFormData({ ...formData, check_in: getISTTime() })}
+                      className="px-2 bg-surface-container-high rounded-xl text-[10px] font-bold hover:bg-primary/10 transition-colors"
+                    >
+                      Now
+                    </button>
                   </div>
-                  <span className="text-2xl font-black text-on-surface">{stat.value.toString().padStart(2, '0')}</span>
+                  <button 
+                    type="button"
+                    onClick={() => handleSubmit(undefined, 'in')}
+                    className="w-full bg-emerald-600 text-white px-4 py-2 rounded-xl font-bold text-xs hover:bg-emerald-700 transition-all flex items-center justify-center gap-2"
+                  >
+                    <LogIn size={14} />
+                    In
+                  </button>
                 </div>
-              ))}
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Out Time (IST)</label>
+                <div className="flex flex-col gap-2">
+                  <div className="flex gap-1">
+                    <div className="relative flex-1">
+                      <input 
+                        type="time"
+                        value={formData.check_out}
+                        onChange={(e) => setFormData({ ...formData, check_out: e.target.value })}
+                        className="w-full bg-surface-container-highest border-none rounded-xl px-3 py-3 text-sm font-medium focus:ring-2 focus:ring-primary"
+                      />
+                    </div>
+                    <button 
+                      type="button"
+                      onClick={() => setFormData({ ...formData, check_out: getISTTime() })}
+                      className="px-2 bg-surface-container-high rounded-xl text-[10px] font-bold hover:bg-primary/10 transition-colors"
+                    >
+                      Now
+                    </button>
+                  </div>
+                  <button 
+                    type="button"
+                    onClick={() => handleSubmit(undefined, 'out')}
+                    className="w-full bg-amber-600 text-white px-4 py-2 rounded-xl font-bold text-xs hover:bg-amber-700 transition-all flex items-center justify-center gap-2"
+                  >
+                    <LogOut size={14} />
+                    Out
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
+          
+          {fingerprintStatus && (
+            <motion.div 
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              className={cn(
+                "mt-4 p-2 rounded-lg text-xs font-bold text-center",
+                fingerprintStatus.type === 'success' ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"
+              )}
+            >
+              {fingerprintStatus.message}
+            </motion.div>
+          )}
+        </motion.div>
 
-          <div className="space-y-4">
-            <h3 className="font-headline font-bold text-lg px-2">Recent Submissions</h3>
-            <div className="space-y-3">
-              {recentLogs.map((log) => (
-                <div key={log.id} className="group flex items-center gap-4 p-4 hover:bg-surface-container-high transition-colors rounded-2xl cursor-pointer">
-                  <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-primary/20">
-                    <img alt={log.name} className="w-full h-full object-cover" src={log.avatar_url || 'https://picsum.photos/seed/user/200/200'} />
-                  </div>
-                  <div className="flex-1 flex flex-col min-w-0">
-                    <span className="font-bold text-on-surface text-sm truncate">{log.name}</span>
-                    <span className="text-[10px] text-on-surface-variant font-medium">{formatTime(log.check_in)} • {log.section}</span>
-                  </div>
-                  <ChevronRight className="text-primary opacity-0 group-hover:opacity-100 transition-opacity" size={16} />
-                </div>
-              ))}
+        {/* Attendance Summary Table */}
+        <div className="bg-surface-container-lowest rounded-3xl shadow-sm border border-outline-variant overflow-hidden">
+          <div className="p-6 border-b border-outline-variant flex items-center justify-between bg-surface-container-low">
+            <div className="flex items-center gap-3">
+              <RefreshCw 
+                size={18} 
+                className={cn("text-primary cursor-pointer", isFingerprintLoading && "animate-spin")} 
+                onClick={() => {
+                  setHistoryLogs([]);
+                  fetchWithAuth(`/api/attendance?date=${historyDate}`).then(res => res.json()).then(data => setHistoryLogs(data));
+                }}
+              />
+              <h3 className="font-headline font-bold text-lg">Attendance Summary</h3>
             </div>
-            <button className="w-full py-3 text-xs font-bold text-primary-container bg-primary-fixed/50 rounded-xl uppercase tracking-widest hover:bg-primary-fixed transition-colors">View All Logs</button>
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-bold text-on-surface-variant uppercase">View Date:</label>
+              <input 
+                type="date" 
+                value={historyDate}
+                onChange={(e) => {
+                  setHistoryDate(e.target.value);
+                  setFormData(prev => ({ ...prev, date: e.target.value }));
+                }}
+                className="bg-surface-container-highest border-none rounded-lg px-3 py-1.5 text-xs font-bold focus:ring-2 focus:ring-primary"
+              />
+            </div>
+          </div>
+          
+          <div className="overflow-x-auto max-h-[600px] overflow-y-auto scrollbar-thin scrollbar-thumb-outline-variant scrollbar-track-transparent">
+            <table className="w-full text-left border-collapse">
+              <thead className="sticky top-0 z-10 bg-surface-container-low shadow-sm">
+                <tr className="border-b border-outline-variant">
+                  <th className="px-6 py-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider bg-surface-container-low">Employee</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider bg-surface-container-low">ID</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider bg-surface-container-low">Project</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider bg-surface-container-low">In Time</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider bg-surface-container-low">Out Time</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider bg-surface-container-low">Status</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider bg-surface-container-low">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-outline-variant">
+                {historyLogs.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-12 text-center text-on-surface-variant text-sm font-medium">
+                      No records found for this date.
+                    </td>
+                  </tr>
+                ) : (
+                  historyLogs.map((log) => (
+                    <tr key={log.id} className="hover:bg-surface-container-low transition-colors group">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <img 
+                            src={log.avatar_url || `https://picsum.photos/seed/${log.employee_id}/200/200`} 
+                            alt={log.name} 
+                            className="w-8 h-8 rounded-full object-cover border border-outline-variant"
+                          />
+                          <span className="text-sm font-bold text-on-surface">{log.name}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-xs font-medium text-on-surface-variant">{log.employee_id}</td>
+                      <td className="px-6 py-4 text-xs font-medium text-on-surface-variant">{log.project || 'N/A'}</td>
+                      <td className="px-6 py-4">
+                        <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600">
+                          <LogIn size={12} />
+                          {formatTime(log.check_in)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        {log.check_out ? (
+                          <span className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-600">
+                            <LogOut size={12} />
+                            {formatTime(log.check_out)}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold text-outline uppercase tracking-tighter italic">Pending</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex flex-col gap-1">
+                          <span className={cn(
+                            "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-widest w-fit",
+                            log.status === 'Half-Day' ? "bg-amber-100 text-amber-700" : 
+                            log.status === 'Absent' ? "bg-error/10 text-error" :
+                            "bg-emerald-100 text-emerald-700"
+                          )}>
+                            {log.status || 'Present'}
+                          </span>
+                          <span className={cn(
+                            "text-[8px] font-bold uppercase tracking-tighter opacity-70",
+                            log.check_out ? "text-emerald-600" : "text-amber-600"
+                          )}>
+                            {log.check_out ? 'Completed' : 'On-Site'}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <button 
+                          onClick={() => {
+                            const emp = employees.find(e => e.employee_id === log.employee_id);
+                            if (emp) handleEmployeeSelect(emp);
+                          }}
+                          className="p-2 text-primary hover:bg-primary/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                          title="Edit Record"
+                        >
+                          <RefreshCw size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>

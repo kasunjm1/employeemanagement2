@@ -11,6 +11,8 @@ const Directory = () => {
   const [roles, setRoles] = useState<Role[]>([]);
   const [sections, setSections] = useState<Section[]>([]);
   const [search, setSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState<number>(0);
+  const [sectionFilter, setSectionFilter] = useState<number>(0);
   const [showAddModal, setShowAddModal] = useState(false);
   const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -55,7 +57,13 @@ const Directory = () => {
     fetchWithAuth('/api/roles')
       .then(res => res.json())
       .then(data => {
-        if (Array.isArray(data)) setRoles(data);
+        if (Array.isArray(data)) {
+          const unique = data.reduce((acc: Role[], current: Role) => {
+            if (!acc.find(item => item.id === current.id)) return acc.concat([current]);
+            return acc;
+          }, []);
+          setRoles(unique);
+        }
       });
   };
 
@@ -63,7 +71,13 @@ const Directory = () => {
     fetchWithAuth('/api/sections')
       .then(res => res.json())
       .then(data => {
-        if (Array.isArray(data)) setSections(data);
+        if (Array.isArray(data)) {
+          const unique = data.reduce((acc: Section[], current: Section) => {
+            if (!acc.find(item => item.id === current.id)) return acc.concat([current]);
+            return acc;
+          }, []);
+          setSections(unique);
+        }
       });
   };
 
@@ -178,14 +192,14 @@ const Directory = () => {
     setNewEmployee({
       name: emp.name,
       nickname: emp.nickname || '',
-      role_id: emp.role_id,
+      role_id: emp.role_id || 0,
       join_date: new Date(emp.join_date).toISOString().split('T')[0],
       employee_id: emp.employee_id,
       mobile: emp.mobile || '',
       whatsapp: emp.whatsapp || '',
       nic: emp.nic || '',
       tax_residency: emp.tax_residency || 'Domestic (Standard)',
-      section_id: emp.section_id,
+      section_id: emp.section_id || 0,
       salary_type: emp.salary_type || 'Monthly',
       avatar_url: emp.avatar_url || '',
       status: emp.status || 'On-Duty'
@@ -195,12 +209,17 @@ const Directory = () => {
     setShowAddModal(true);
   };
 
-  const filtered = employees.filter(e => 
-    e.name.toLowerCase().includes(search.toLowerCase()) || 
-    (e.role?.toLowerCase().includes(search.toLowerCase()) ?? false) ||
-    (e.section?.toLowerCase().includes(search.toLowerCase()) ?? false) ||
-    e.employee_id.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = employees.filter(e => {
+    const matchesSearch = e.name.toLowerCase().includes(search.toLowerCase()) || 
+      (e.role?.toLowerCase().includes(search.toLowerCase()) ?? false) ||
+      (e.section?.toLowerCase().includes(search.toLowerCase()) ?? false) ||
+      e.employee_id.toLowerCase().includes(search.toLowerCase());
+    
+    const matchesRole = roleFilter === 0 || e.role_id === roleFilter;
+    const matchesSection = sectionFilter === 0 || e.section_id === sectionFilter;
+    
+    return matchesSearch && matchesRole && matchesSection;
+  });
 
   return (
     <div className="space-y-8">
@@ -223,21 +242,46 @@ const Directory = () => {
         </button>
       </section>
 
-      <div className="bg-surface-container-lowest rounded-2xl p-4 shadow-sm border border-outline-variant/10 flex flex-col md:flex-row gap-4">
+      <div className="bg-surface-container-lowest rounded-2xl p-4 shadow-sm border border-outline-variant/10 flex flex-col lg:flex-row gap-4">
         <div className="flex-1 relative">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-outline" size={20} />
           <input 
             type="text"
-            placeholder="Search by name, role or department..."
+            placeholder="Search by name, role or ID..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full bg-surface-container-low border-none rounded-xl pl-12 pr-4 py-3 text-sm focus:ring-2 focus:ring-primary transition-all"
           />
         </div>
-        <button className="flex items-center gap-2 px-4 py-3 bg-surface-container-low rounded-xl text-sm font-semibold text-on-surface-variant hover:bg-surface-container-high transition-colors">
-          <Filter size={18} />
-          Filters
-        </button>
+        <div className="flex flex-wrap gap-3">
+          <select 
+            value={roleFilter}
+            onChange={(e) => setRoleFilter(parseInt(e.target.value))}
+            className="bg-surface-container-low border-none rounded-xl px-4 py-3 text-sm font-semibold text-on-surface-variant focus:ring-2 focus:ring-primary transition-all"
+          >
+            <option value="0">All Roles</option>
+            {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+          </select>
+          <select 
+            value={sectionFilter}
+            onChange={(e) => setSectionFilter(parseInt(e.target.value))}
+            className="bg-surface-container-low border-none rounded-xl px-4 py-3 text-sm font-semibold text-on-surface-variant focus:ring-2 focus:ring-primary transition-all"
+          >
+            <option value="0">All Departments</option>
+            {sections.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+          <button 
+            onClick={() => {
+              setSearch('');
+              setRoleFilter(0);
+              setSectionFilter(0);
+            }}
+            className="flex items-center gap-2 px-4 py-3 bg-surface-container-low rounded-xl text-sm font-semibold text-on-surface-variant hover:bg-surface-container-high transition-colors"
+          >
+            <X size={18} />
+            Clear
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -264,6 +308,13 @@ const Directory = () => {
                     <img src={emp.avatar_url || `https://picsum.photos/seed/${emp.employee_id}/200/200`} alt={emp.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                   </div>
                   <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="px-2 py-0.5 bg-primary/10 text-primary text-[10px] font-bold rounded-md uppercase tracking-wider">{emp.employee_id}</span>
+                      <span className={cn(
+                        "px-2 py-0.5 text-[10px] font-bold rounded-md uppercase tracking-wider",
+                        emp.status === 'On-Duty' ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"
+                      )}>{emp.status}</span>
+                    </div>
                     <h3 className="font-headline font-bold text-lg text-on-surface truncate group-hover:text-primary transition-colors">{emp.name}</h3>
                     <p className="text-sm text-on-surface-variant font-medium">{emp.role}</p>
                   </div>
@@ -374,7 +425,7 @@ const Directory = () => {
                     </label>
                     <select 
                       required
-                      value={newEmployee.role_id}
+                      value={newEmployee.role_id || 0}
                       onChange={(e) => setNewEmployee({ ...newEmployee, role_id: parseInt(e.target.value) })}
                       className="w-full bg-surface-container-low border-none rounded-xl py-3 px-4 font-body text-sm focus:ring-2 focus:ring-primary transition-all"
                     >
@@ -391,7 +442,7 @@ const Directory = () => {
                     </label>
                     <select 
                       required
-                      value={newEmployee.section_id}
+                      value={newEmployee.section_id || 0}
                       onChange={(e) => setNewEmployee({ ...newEmployee, section_id: parseInt(e.target.value) })}
                       className="w-full bg-surface-container-low border-none rounded-xl py-3 px-4 font-body text-sm focus:ring-2 focus:ring-primary transition-all"
                     >

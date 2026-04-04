@@ -1,16 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Settings as SettingsIcon, Users, Building2, Shield, Pencil } from 'lucide-react';
+import { Plus, Trash2, Settings as SettingsIcon, Users, Building2, Shield, Pencil, Briefcase } from 'lucide-react';
 import { motion } from 'motion/react';
-import { Role, Section, User } from '@/src/types';
+import { Role, Section, User, Project } from '@/src/types';
 
 const Settings = () => {
   const [roles, setRoles] = useState<Role[]>([]);
   const [sections, setSections] = useState<Section[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [newRole, setNewRole] = useState('');
   const [newSection, setNewSection] = useState('');
+  const [newProject, setNewProject] = useState('');
   const [editingRole, setEditingRole] = useState<Role | null>(null);
   const [editingSection, setEditingSection] = useState<Section | null>(null);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
   
   const [showUserModal, setShowUserModal] = useState(false);
   const [userModalMode, setUserModalMode] = useState<'add' | 'edit'>('add');
@@ -26,6 +29,10 @@ const Settings = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [accounts, setAccounts] = useState<{id: number, name: string}[]>([]);
+  const [appSettings, setAppSettings] = useState({
+    half_day_threshold: '10:00'
+  });
+  const [savingSettings, setSavingSettings] = useState(false);
 
   const user = JSON.parse(localStorage.getItem('ems_user') || '{}');
 
@@ -38,15 +45,19 @@ const Settings = () => {
 
   const fetchData = async () => {
     try {
-      const [rolesRes, sectionsRes, usersRes] = await Promise.all([
+      const [rolesRes, sectionsRes, projectsRes, usersRes, settingsRes] = await Promise.all([
         fetch('/api/roles', { headers: getHeaders() }),
         fetch('/api/sections', { headers: getHeaders() }),
-        fetch('/api/users', { headers: getHeaders() })
+        fetch('/api/projects', { headers: getHeaders() }),
+        fetch('/api/users', { headers: getHeaders() }),
+        fetch('/api/settings', { headers: getHeaders() })
       ]);
 
       if (rolesRes.ok) setRoles(await rolesRes.json());
       if (sectionsRes.ok) setSections(await sectionsRes.json());
+      if (projectsRes.ok) setProjects(await projectsRes.json());
       if (usersRes.ok) setUsers(await usersRes.json());
+      if (settingsRes.ok) setAppSettings(await settingsRes.json());
 
       if (user.role === 'super_admin') {
         const accountsRes = await fetch('/api/accounts', { headers: getHeaders() });
@@ -99,6 +110,24 @@ const Settings = () => {
     }
   };
 
+  const handleAddProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newProject.trim()) return;
+    try {
+      const res = await fetch('/api/projects', {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ name: newProject })
+      });
+      if (res.ok) {
+        setNewProject('');
+        fetchData();
+      }
+    } catch (err) {
+      setError('Failed to add project');
+    }
+  };
+
   const handleDeleteRole = async (id: number) => {
     if (!confirm('Are you sure you want to delete this role?')) return;
     try {
@@ -122,6 +151,19 @@ const Settings = () => {
       if (res.ok) fetchData();
     } catch (err) {
       setError('Failed to delete section');
+    }
+  };
+
+  const handleDeleteProject = async (id: number) => {
+    if (!confirm('Are you sure you want to delete this project?')) return;
+    try {
+      const res = await fetch(`/api/projects/${id}`, {
+        method: 'DELETE',
+        headers: getHeaders()
+      });
+      if (res.ok) fetchData();
+    } catch (err) {
+      setError('Failed to delete project');
     }
   };
 
@@ -158,6 +200,24 @@ const Settings = () => {
       }
     } catch (err) {
       setError('Failed to update section');
+    }
+  };
+
+  const handleUpdateProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProject || !editingProject.name.trim()) return;
+    try {
+      const res = await fetch(`/api/projects/${editingProject.id}`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify({ name: editingProject.name })
+      });
+      if (res.ok) {
+        setEditingProject(null);
+        fetchData();
+      }
+    } catch (err) {
+      setError('Failed to update project');
     }
   };
 
@@ -228,6 +288,24 @@ const Settings = () => {
       account_id: u.account_id?.toString() || ''
     });
     setShowUserModal(true);
+  };
+
+  const handleUpdateSetting = async (key: string, value: string) => {
+    setSavingSettings(true);
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ key, value })
+      });
+      if (res.ok) {
+        setAppSettings(prev => ({ ...prev, [key]: value }));
+      }
+    } catch (err) {
+      setError('Failed to update setting');
+    } finally {
+      setSavingSettings(false);
+    }
   };
 
   if (loading) return <div className="p-8 text-center">Loading settings...</div>;
@@ -378,6 +456,70 @@ const Settings = () => {
           </div>
         </motion.div>
 
+        {/* Projects Management */}
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
+          className="bg-surface-container-lowest p-8 rounded-[2.5rem] border border-outline-variant/10 shadow-sm"
+        >
+          <div className="flex items-center gap-3 mb-6">
+            <Briefcase className="text-primary" size={24} />
+            <h2 className="font-headline text-xl font-bold text-on-surface">Working Projects</h2>
+          </div>
+
+          <form onSubmit={handleAddProject} className="flex gap-2 mb-6">
+            <input 
+              type="text"
+              value={newProject}
+              onChange={(e) => setNewProject(e.target.value)}
+              placeholder="New project name..."
+              className="flex-1 bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+            />
+            <button type="submit" className="p-2 bg-primary text-on-primary rounded-xl hover:bg-primary/90 transition-colors">
+              <Plus size={20} />
+            </button>
+          </form>
+
+          <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
+            {projects.map((project) => (
+              <div key={project.id} className="flex items-center justify-between p-3 bg-surface-container-low rounded-xl group">
+                {editingProject?.id === project.id ? (
+                  <form onSubmit={handleUpdateProject} className="flex-1 flex gap-2">
+                    <input 
+                      type="text"
+                      value={editingProject.name}
+                      onChange={(e) => setEditingProject({ ...editingProject, name: e.target.value })}
+                      className="flex-1 bg-white border border-primary rounded-lg px-2 py-1 text-sm focus:outline-none"
+                      autoFocus
+                    />
+                    <button type="submit" className="text-primary font-bold text-xs">Save</button>
+                    <button type="button" onClick={() => setEditingProject(null)} className="text-on-surface-variant text-xs">Cancel</button>
+                  </form>
+                ) : (
+                  <>
+                    <span className="text-sm font-medium text-on-surface">{project.name}</span>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                      <button 
+                        onClick={() => setEditingProject(project)}
+                        className="p-1.5 text-on-surface-variant hover:text-primary hover:bg-primary/10 rounded-lg"
+                      >
+                        <Pencil size={16} />
+                      </button>
+                      <button 
+                        onClick={() => handleDeleteProject(project.id)}
+                        className="p-1.5 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        </motion.div>
+
         {/* Users Management */}
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
@@ -446,6 +588,37 @@ const Settings = () => {
                 ))}
               </tbody>
             </table>
+          </div>
+        </motion.div>
+
+        {/* System Settings */}
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25 }}
+          className="md:col-span-2 bg-surface-container-lowest p-8 rounded-[2.5rem] border border-outline-variant/10 shadow-sm"
+        >
+          <div className="flex items-center gap-3 mb-6">
+            <SettingsIcon className="text-primary" size={24} />
+            <h2 className="font-headline text-xl font-bold text-on-surface">System Configuration</h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="space-y-4">
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-bold text-on-surface">Half-Day Threshold</label>
+                <p className="text-xs text-on-surface-variant">If an employee checks in after this time, it's considered a half-day.</p>
+              </div>
+              <div className="flex items-center gap-4">
+                <input 
+                  type="time"
+                  value={appSettings.half_day_threshold}
+                  onChange={(e) => handleUpdateSetting('half_day_threshold', e.target.value)}
+                  className="bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                />
+                {savingSettings && <span className="text-[10px] text-primary animate-pulse font-bold uppercase">Saving...</span>}
+              </div>
+            </div>
           </div>
         </motion.div>
       </div>

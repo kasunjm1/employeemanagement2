@@ -22,6 +22,11 @@ export interface Section {
   name: string;
 }
 
+export interface Project {
+  id: number;
+  name: string;
+}
+
 export interface Employee {
   id: number;
   name: string;
@@ -39,6 +44,7 @@ export interface Employee {
   avatar_url: string;
   role?: string; // For display
   section?: string; // For display
+  project?: string; // For display
 }
 
 export interface Attendance {
@@ -49,9 +55,11 @@ export interface Attendance {
   check_out: string;
   status: string;
   section_id: number;
+  project_id: number;
   name?: string;
   avatar_url?: string;
   section?: string; // For display
+  project?: string; // For display
 }
 
 export interface Leave {
@@ -79,4 +87,8 @@ export interface DashboardStats {
   activeToday: number;
   absentToday: number;
   growth: string;
+}
+
+export interface AppSettings {
+  half_day_threshold: string;
 }

@@ -68,6 +68,15 @@ export async function initDb() {
         )
       `),
       query(`
+        CREATE TABLE IF NOT EXISTS e_projects (
+          id SERIAL PRIMARY KEY,
+          account_id INTEGER REFERENCES e_accounts(id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          deleted_at TIMESTAMP,
+          UNIQUE(account_id, name)
+        )
+      `),
+      query(`
         CREATE TABLE IF NOT EXISTS e_employees (
           id SERIAL PRIMARY KEY,
           account_id INTEGER REFERENCES e_accounts(id) ON DELETE CASCADE,
@@ -110,6 +119,7 @@ export async function initDb() {
           check_out TIME,
           status TEXT,
           section_id INTEGER REFERENCES e_sections(id),
+          project_id INTEGER REFERENCES e_projects(id),
           deleted_at TIMESTAMP
         )
       `),
@@ -137,6 +147,15 @@ export async function initDb() {
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           deleted_at TIMESTAMP
         )
+      `),
+      query(`
+        CREATE TABLE IF NOT EXISTS e_settings (
+          id SERIAL PRIMARY KEY,
+          account_id INTEGER REFERENCES e_accounts(id) ON DELETE CASCADE,
+          key TEXT NOT NULL,
+          value TEXT NOT NULL,
+          UNIQUE(account_id, key)
+        )
       `)
     ]);
 
@@ -145,12 +164,26 @@ export async function initDb() {
       await query(`ALTER TABLE e_employees ADD COLUMN IF NOT EXISTS role_id INTEGER REFERENCES e_roles(id)`);
       await query(`ALTER TABLE e_employees ADD COLUMN IF NOT EXISTS section_id INTEGER REFERENCES e_sections(id)`);
       await query(`ALTER TABLE e_attendance ADD COLUMN IF NOT EXISTS section_id INTEGER REFERENCES e_sections(id)`);
+      await query(`ALTER TABLE e_attendance ADD COLUMN IF NOT EXISTS project_id INTEGER REFERENCES e_projects(id)`);
       
       // Make old role and section columns nullable if they exist to avoid INSERT failures
       await query(`ALTER TABLE e_employees ALTER COLUMN role DROP NOT NULL`).catch(() => {});
       await query(`ALTER TABLE e_employees ALTER COLUMN section DROP NOT NULL`).catch(() => {});
       await query(`ALTER TABLE e_attendance ALTER COLUMN section DROP NOT NULL`).catch(() => {});
       
+      // Fix problematic foreign key constraints if they exist
+      await query(`ALTER TABLE e_attendance DROP CONSTRAINT IF EXISTS e_attendance_employee_id_fkey`).catch(() => {});
+      
+      // Add proper composite foreign key for e_attendance to ensure data integrity
+      // This references the UNIQUE(account_id, employee_id) in e_employees
+      await query(`
+        ALTER TABLE e_attendance 
+        ADD CONSTRAINT e_attendance_employee_account_fkey 
+        FOREIGN KEY (account_id, employee_id) 
+        REFERENCES e_employees(account_id, employee_id) 
+        ON DELETE CASCADE
+      `).catch(() => {});
+
       console.log('Migration check complete: role_id and section_id columns verified.');
     } catch (migrationErr) {
       console.error('Migration error:', migrationErr);
@@ -260,11 +293,26 @@ const authenticate = (req: any, res: any, next: any) => {
     }
   });
 
+  // Helper for half-day status
+  async function getStatusWithThreshold(accountId: number, checkIn: string | null): Promise<string> {
+    if (!checkIn) return 'Present';
+    try {
+      const settingsResult = await query("SELECT value FROM e_settings WHERE account_id = $1 AND key = 'half_day_threshold'", [accountId]);
+      const threshold = settingsResult.rows[0]?.value || '10:00';
+      
+      // Normalize checkIn to HH:mm
+      const checkInTime = checkIn.substring(0, 5);
+      return checkInTime > threshold ? 'Half-Day' : 'Present';
+    } catch (err) {
+      return 'Present';
+    }
+  }
+
   app.get("/api/stats", authenticate, async (req: any, res) => {
     const { account_id } = req.user;
     try {
       const totalWorkforce = await query("SELECT COUNT(*) FROM e_employees WHERE account_id = $1 AND deleted_at IS NULL", [account_id]);
-      const activeToday = await query("SELECT COUNT(*) FROM e_attendance WHERE account_id = $1 AND date = CURRENT_DATE AND status = 'Present' AND deleted_at IS NULL", [account_id]);
+      const activeToday = await query("SELECT COUNT(*) FROM e_attendance WHERE account_id = $1 AND date = CURRENT_DATE AND status IN ('Present', 'Half-Day') AND deleted_at IS NULL", [account_id]);
       const absentToday = await query("SELECT COUNT(*) FROM e_attendance WHERE account_id = $1 AND date = CURRENT_DATE AND status = 'Absent' AND deleted_at IS NULL", [account_id]);
       
       res.json({
@@ -364,6 +412,49 @@ const authenticate = (req: any, res: any, next: any) => {
     }
   });
 
+  app.get("/api/projects", authenticate, async (req: any, res) => {
+    const { account_id } = req.user;
+    try {
+      const result = await query("SELECT * FROM e_projects WHERE account_id = $1 AND deleted_at IS NULL ORDER BY name ASC", [account_id]);
+      res.json(result.rows);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch projects" });
+    }
+  });
+
+  app.post("/api/projects", authenticate, async (req: any, res) => {
+    const { account_id } = req.user;
+    const { name } = req.body;
+    try {
+      const result = await query("INSERT INTO e_projects (account_id, name) VALUES ($1, $2) RETURNING *", [account_id, name]);
+      res.json(result.rows[0]);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to add project" });
+    }
+  });
+
+  app.put("/api/projects/:id", authenticate, async (req: any, res) => {
+    const { account_id } = req.user;
+    const { name } = req.body;
+    try {
+      const result = await query("UPDATE e_projects SET name = $1 WHERE id = $2 AND account_id = $3 AND deleted_at IS NULL RETURNING *", [name, req.params.id, account_id]);
+      if (result.rows.length === 0) return res.status(404).json({ error: "Project not found" });
+      res.json(result.rows[0]);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to update project" });
+    }
+  });
+
+  app.delete("/api/projects/:id", authenticate, async (req: any, res) => {
+    const { account_id } = req.user;
+    try {
+      await query("UPDATE e_projects SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1 AND account_id = $2", [req.params.id, account_id]);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to delete project" });
+    }
+  });
+
   app.get("/api/employees", authenticate, async (req: any, res) => {
     const { account_id } = req.user;
     try {
@@ -373,7 +464,7 @@ const authenticate = (req: any, res: any, next: any) => {
         LEFT JOIN e_roles r ON e.role_id = r.id
         LEFT JOIN e_sections s ON e.section_id = s.id
         WHERE e.account_id = $1 AND e.deleted_at IS NULL 
-        ORDER BY e.name ASC
+        ORDER BY e.employee_id ASC
       `, [account_id]);
       res.json(result.rows);
     } catch (err) {
@@ -503,15 +594,26 @@ const authenticate = (req: any, res: any, next: any) => {
 
   app.get("/api/attendance", authenticate, async (req: any, res) => {
     const { account_id } = req.user;
+    const { date } = req.query;
     try {
-      const result = await query(`
-        SELECT a.*, e.name, e.avatar_url, s.name as section 
+      let queryStr = `
+        SELECT a.*, e.name, e.avatar_url, s.name as section, p.name as project 
         FROM e_attendance a 
         JOIN e_employees e ON a.employee_id = e.employee_id AND a.account_id = e.account_id
         LEFT JOIN e_sections s ON a.section_id = s.id
+        LEFT JOIN e_projects p ON a.project_id = p.id
         WHERE a.account_id = $1 AND a.deleted_at IS NULL AND e.deleted_at IS NULL
-        ORDER BY a.date DESC, a.check_in DESC
-      `, [account_id]);
+      `;
+      const params: any[] = [account_id];
+
+      if (date) {
+        queryStr += " AND a.date = $2";
+        params.push(date);
+      }
+
+      queryStr += " ORDER BY a.date DESC, a.check_in DESC";
+      
+      const result = await query(queryStr, params);
       res.json(result.rows);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch attendance" });
@@ -520,19 +622,31 @@ const authenticate = (req: any, res: any, next: any) => {
 
   app.post("/api/attendance", authenticate, async (req: any, res) => {
     const { account_id } = req.user;
-    const { employee_id, date, check_in, check_out, status, section_id } = req.body;
+    const { employee_id, date, check_in, check_out, status: providedStatus, section_id, project_id } = req.body;
     try {
+      const status = await getStatusWithThreshold(account_id, check_in);
+      
       const result = await query(
-        "INSERT INTO e_attendance (account_id, employee_id, date, check_in, check_out, status, section_id) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *",
-        [account_id, employee_id, date, check_in, check_out, status, section_id === 0 ? null : section_id]
+        "INSERT INTO e_attendance (account_id, employee_id, date, check_in, check_out, status, section_id, project_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *",
+        [
+          account_id, 
+          employee_id, 
+          date, 
+          check_in || null, 
+          check_out || null, 
+          status, 
+          section_id === 0 ? null : section_id,
+          project_id === 0 ? null : project_id
+        ]
       );
       
       // Fetch joined data for response
       const joinedResult = await query(`
-        SELECT a.*, e.name, e.avatar_url, s.name as section 
+        SELECT a.*, e.name, e.avatar_url, s.name as section, p.name as project 
         FROM e_attendance a 
         JOIN e_employees e ON a.employee_id = e.employee_id AND a.account_id = e.account_id
         LEFT JOIN e_sections s ON a.section_id = s.id
+        LEFT JOIN e_projects p ON a.project_id = p.id
         WHERE a.id = $1
       `, [result.rows[0].id]);
       
@@ -540,6 +654,158 @@ const authenticate = (req: any, res: any, next: any) => {
     } catch (err) {
       console.error("Error recording attendance:", err);
       res.status(500).json({ error: "Failed to record attendance" });
+    }
+  });
+
+  app.get("/api/employees/:employee_id/attendance-status", authenticate, async (req: any, res) => {
+    const { account_id } = req.user;
+    const { employee_id } = req.params;
+    const today = new Date().toISOString().split('T')[0];
+
+    try {
+      // Get today's attendance
+      const todayAttendance = await query(
+        "SELECT * FROM e_attendance WHERE account_id = $1 AND employee_id = $2 AND date = $3 AND deleted_at IS NULL",
+        [account_id, employee_id, today]
+      );
+
+      // Get last worked section from most recent attendance record
+      const lastAttendance = await query(
+        "SELECT section_id, project_id FROM e_attendance WHERE account_id = $1 AND employee_id = $2 AND deleted_at IS NULL ORDER BY date DESC, check_in DESC LIMIT 1",
+        [account_id, employee_id]
+      );
+
+      // Also get employee's default section
+      const emp = await query(
+        "SELECT section_id FROM e_employees WHERE account_id = $1 AND employee_id = $2 AND deleted_at IS NULL",
+        [account_id, employee_id]
+      );
+
+      res.json({
+        today: todayAttendance.rows[0] || null,
+        last_section_id: lastAttendance.rows[0]?.section_id || emp.rows[0]?.section_id || null,
+        last_project_id: lastAttendance.rows[0]?.project_id || null
+      });
+    } catch (err) {
+      console.error("Error fetching attendance status:", err);
+      res.status(500).json({ error: "Failed to fetch attendance status" });
+    }
+  });
+
+  app.put("/api/attendance/:id", authenticate, async (req: any, res) => {
+    const { account_id } = req.user;
+    const { id } = req.params;
+    const { check_in, check_out, status: providedStatus, section_id, project_id, date } = req.body;
+
+    try {
+      const status = await getStatusWithThreshold(account_id, check_in);
+
+      const result = await query(
+        "UPDATE e_attendance SET check_in = $1, check_out = $2, status = $3, section_id = $4, project_id = $5, date = $6 WHERE id = $7 AND account_id = $8 RETURNING *",
+        [
+          check_in || null, 
+          check_out || null, 
+          status, 
+          section_id === 0 ? null : section_id, 
+          project_id === 0 ? null : project_id,
+          date, 
+          id, 
+          account_id
+        ]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: "Attendance record not found" });
+      }
+
+      // Fetch joined data for response
+      const joinedResult = await query(`
+        SELECT a.*, e.name, e.avatar_url, s.name as section, p.name as project 
+        FROM e_attendance a 
+        JOIN e_employees e ON a.employee_id = e.employee_id AND a.account_id = e.account_id
+        LEFT JOIN e_sections s ON a.section_id = s.id
+        LEFT JOIN e_projects p ON a.project_id = p.id
+        WHERE a.id = $1
+      `, [id]);
+
+      res.json(joinedResult.rows[0]);
+    } catch (err) {
+      console.error("Error updating attendance:", err);
+      res.status(500).json({ error: "Failed to update attendance" });
+    }
+  });
+
+  app.post("/api/attendance/fingerprint", authenticate, async (req: any, res) => {
+    const { account_id } = req.user;
+    const { employee_id } = req.body;
+    
+    if (!employee_id) {
+      return res.status(400).json({ error: "Employee ID is required" });
+    }
+
+    try {
+      // Check if employee exists
+      const empCheck = await query("SELECT * FROM e_employees WHERE employee_id = $1 AND account_id = $2 AND deleted_at IS NULL", [employee_id, account_id]);
+      if (empCheck.rows.length === 0) {
+        return res.status(404).json({ error: "Employee not found" });
+      }
+      
+      const employee = empCheck.rows[0];
+      const today = new Date().toISOString().split('T')[0];
+      
+      // Check for existing record today
+      const attendanceCheck = await query(
+        "SELECT * FROM e_attendance WHERE account_id = $1 AND employee_id = $2 AND date = $3",
+        [account_id, employee_id, today]
+      );
+      
+      let result;
+      let action = "";
+      
+      if (attendanceCheck.rows.length === 0) {
+        // First scan of the day - Check-in
+        // Get IST time for threshold check
+        const d = new Date();
+        const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
+        const ist = new Date(utc + (3600000 * 5.5));
+        const istTimeStr = ist.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+        
+        const status = await getStatusWithThreshold(account_id, istTimeStr);
+
+        result = await query(
+          "INSERT INTO e_attendance (account_id, employee_id, date, check_in, status, section_id, project_id) VALUES ($1, $2, $3, CURRENT_TIME, $4, $5, $6) RETURNING *",
+          [account_id, employee_id, today, status, employee.section_id, null] // project_id null for now on fingerprint
+        );
+        action = "Check-in";
+      } else {
+        // Subsequent scan - Check-out (updates to latest scan time)
+        const recordId = attendanceCheck.rows[0].id;
+        result = await query(
+          "UPDATE e_attendance SET check_out = CURRENT_TIME WHERE id = $1 RETURNING *",
+          [recordId]
+        );
+        action = "Check-out";
+      }
+      
+      // Fetch joined data for response
+      const joinedResult = await query(`
+        SELECT a.*, e.name, e.avatar_url, s.name as section, p.name as project 
+        FROM e_attendance a 
+        JOIN e_employees e ON a.employee_id = e.employee_id AND a.account_id = e.account_id
+        LEFT JOIN e_sections s ON a.section_id = s.id
+        LEFT JOIN e_projects p ON a.project_id = p.id
+        WHERE a.id = $1
+      `, [result.rows[0].id]);
+      
+      res.json({ 
+        success: true, 
+        action, 
+        data: joinedResult.rows[0],
+        message: `${action} successful for ${employee.name}`
+      });
+    } catch (err) {
+      console.error("Error in fingerprint attendance:", err);
+      res.status(500).json({ error: "Failed to process fingerprint scan" });
     }
   });
 
@@ -566,6 +832,38 @@ const authenticate = (req: any, res: any, next: any) => {
       res.json(result.rows);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch alerts" });
+    }
+  });
+
+  app.get("/api/settings", authenticate, async (req: any, res) => {
+    const { account_id } = req.user;
+    try {
+      const result = await query("SELECT key, value FROM e_settings WHERE account_id = $1", [account_id]);
+      const settings: Record<string, string> = {
+        half_day_threshold: '10:00' // Default
+      };
+      result.rows.forEach(row => {
+        settings[row.key] = row.value;
+      });
+      res.json(settings);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch settings" });
+    }
+  });
+
+  app.post("/api/settings", authenticate, async (req: any, res) => {
+    const { account_id } = req.user;
+    const { key, value } = req.body;
+    try {
+      await query(`
+        INSERT INTO e_settings (account_id, key, value) 
+        VALUES ($1, $2, $3)
+        ON CONFLICT (account_id, key) 
+        DO UPDATE SET value = EXCLUDED.value
+      `, [account_id, key, value]);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to update setting" });
     }
   });
 
