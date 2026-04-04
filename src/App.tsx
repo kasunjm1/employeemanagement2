@@ -37,6 +37,7 @@ export default function App() {
   if (loading) return null;
 
   if (!user) {
+    document.title = 'EMS Master - Login';
     return <Login onLogin={handleLogin} />;
   }
 

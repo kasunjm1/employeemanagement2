@@ -184,7 +184,25 @@ export async function initDb() {
         ON DELETE CASCADE
       `).catch(() => {});
 
-      console.log('Migration check complete: role_id and section_id columns verified.');
+      // Migration: Fix unique constraints for multi-account support
+      // Drop old single-column unique constraints if they exist and ensure composite ones are present
+      await query(`ALTER TABLE e_roles DROP CONSTRAINT IF EXISTS e_roles_name_key`).catch(() => {});
+      await query(`ALTER TABLE e_roles ADD CONSTRAINT e_roles_account_name_key UNIQUE (account_id, name)`).catch(() => {});
+      
+      await query(`ALTER TABLE e_sections DROP CONSTRAINT IF EXISTS e_sections_name_key`).catch(() => {});
+      await query(`ALTER TABLE e_sections ADD CONSTRAINT e_sections_account_name_key UNIQUE (account_id, name)`).catch(() => {});
+      
+      await query(`ALTER TABLE e_projects DROP CONSTRAINT IF EXISTS e_projects_name_key`).catch(() => {});
+      await query(`ALTER TABLE e_projects ADD CONSTRAINT e_projects_account_name_key UNIQUE (account_id, name)`).catch(() => {});
+
+      console.log('Dropping old employee_id unique constraint...');
+      await query(`ALTER TABLE e_employees DROP CONSTRAINT IF EXISTS e_employees_employee_id_key CASCADE`).catch((e) => console.log('Failed to drop constraint:', e.message));
+      await query(`DROP INDEX IF EXISTS e_employees_employee_id_key CASCADE`).catch((e) => console.log('Failed to drop index:', e.message));
+      // Ensure the composite unique constraint exists (it's in the CREATE TABLE but might need to be added if it was missing)
+      console.log('Adding composite employee_id unique constraint...');
+      await query(`ALTER TABLE e_employees ADD CONSTRAINT e_employees_account_employee_id_key UNIQUE (account_id, employee_id)`).catch((e) => console.log('Failed to add composite constraint:', e.message));
+
+      console.log('Migration check complete: role_id, section_id columns and unique constraints verified.');
     } catch (migrationErr) {
       console.error('Migration error:', migrationErr);
     }
@@ -286,7 +304,8 @@ const authenticate = (req: any, res: any, next: any) => {
         email: user.email,
         name: user.name,
         role: user.role,
-        account_id: user.account_id
+        account_id: user.account_id,
+        account_name: accountResult.rows[0].name
       });
     } catch (err) {
       res.status(500).json({ error: "Login failed" });
@@ -342,8 +361,12 @@ const authenticate = (req: any, res: any, next: any) => {
     try {
       const result = await query("INSERT INTO e_roles (account_id, name) VALUES ($1, $2) RETURNING *", [account_id, name]);
       res.json(result.rows[0]);
-    } catch (err) {
-      res.status(500).json({ error: "Failed to add role" });
+    } catch (err: any) {
+      if (err.code === '23505') {
+        res.status(400).json({ error: "Role name already exists in this account" });
+      } else {
+        res.status(500).json({ error: "Failed to add role" });
+      }
     }
   });
 
@@ -385,8 +408,12 @@ const authenticate = (req: any, res: any, next: any) => {
     try {
       const result = await query("INSERT INTO e_sections (account_id, name) VALUES ($1, $2) RETURNING *", [account_id, name]);
       res.json(result.rows[0]);
-    } catch (err) {
-      res.status(500).json({ error: "Failed to add section" });
+    } catch (err: any) {
+      if (err.code === '23505') {
+        res.status(400).json({ error: "Section name already exists in this account" });
+      } else {
+        res.status(500).json({ error: "Failed to add section" });
+      }
     }
   });
 
@@ -428,8 +455,12 @@ const authenticate = (req: any, res: any, next: any) => {
     try {
       const result = await query("INSERT INTO e_projects (account_id, name) VALUES ($1, $2) RETURNING *", [account_id, name]);
       res.json(result.rows[0]);
-    } catch (err) {
-      res.status(500).json({ error: "Failed to add project" });
+    } catch (err: any) {
+      if (err.code === '23505') {
+        res.status(400).json({ error: "Project name already exists in this account" });
+      } else {
+        res.status(500).json({ error: "Failed to add project" });
+      }
     }
   });
 

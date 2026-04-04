@@ -9,6 +9,9 @@ const AccountManagement = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
+  const [duplicationStatus, setDuplicationStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
 
   const user = JSON.parse(localStorage.getItem('ems_user') || '{}');
 
@@ -35,6 +38,7 @@ const AccountManagement = () => {
   };
 
   useEffect(() => {
+    console.log('AccountManagement component mounted');
     fetchAccounts();
   }, []);
 
@@ -49,6 +53,7 @@ const AccountManagement = () => {
       });
       if (res.ok) {
         setNewAccountName('');
+        setShowCreateModal(false);
         fetchAccounts();
       }
     } catch (err) {
@@ -99,7 +104,21 @@ const AccountManagement = () => {
   if (loading) return <div className="p-8 text-center">Loading accounts...</div>;
 
   return (
-    <div className="max-w-6xl mx-auto space-y-10 p-6">
+    <div className="max-w-6xl mx-auto space-y-10 p-6 relative">
+      {duplicating && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="bg-white p-8 rounded-2xl shadow-2xl text-center space-y-4">
+            <div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin mx-auto" />
+            <h2 className="text-xl font-headline font-bold">Duplicating Data...</h2>
+            <p className="text-gray-500 font-body">This may take a few moments. Please do not close this tab.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Debug Info */}
+      <div className="text-[10px] text-gray-400 font-mono mb-4">
+        User: {user.email} | Role: {user.role} | Account: {user.account_id}
+      </div>
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="flex items-center gap-4">
           <div className="p-3 bg-primary/10 rounded-2xl text-primary">
@@ -122,25 +141,121 @@ const AccountManagement = () => {
               className="bg-surface-container-low border border-outline-variant/20 rounded-xl pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 w-64"
             />
           </div>
-          <form onSubmit={handleCreateAccount} className="flex gap-2">
-            <input 
-              type="text"
-              value={newAccountName}
-              onChange={(e) => setNewAccountName(e.target.value)}
-              placeholder="New account name..."
-              className="bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-            />
-            <button type="submit" className="flex items-center gap-2 px-4 py-2 bg-primary text-on-primary rounded-xl font-bold text-sm hover:bg-primary/90 transition-colors">
-              <Plus size={18} />
-              Create
-            </button>
-          </form>
+          <button 
+            disabled={duplicating}
+            onClick={async () => {
+              console.log('Duplication button clicked');
+              if (user.role !== 'super_admin') {
+                alert('You must be a super_admin to perform this action. Your current role is: ' + user.role);
+                return;
+              }
+              const confirmed = window.confirm ? window.confirm("Duplicate all data from 'Mahamevnawa Galnewa' to 'Test'?") : true;
+              if (!confirmed) {
+                console.log('Duplication cancelled by user');
+                return;
+              }
+              setDuplicating(true);
+              setDuplicationStatus(null);
+              console.log('Starting duplication request...');
+              try {
+                const res = await fetch('/api/admin/duplicate-account-data', {
+                  method: 'POST',
+                  headers: getHeaders()
+                });
+                console.log('Duplication response received:', res.status);
+                const data = await res.json();
+                if (res.ok) {
+                  setDuplicationStatus({ type: 'success', message: data.message });
+                  fetchAccounts();
+                } else {
+                  console.error('Duplication failed:', data);
+                  setDuplicationStatus({ type: 'error', message: data.error + (data.details ? ': ' + data.details : '') });
+                }
+              } catch (err) {
+                console.error('Duplication network error:', err);
+                setDuplicationStatus({ type: 'error', message: 'Failed to trigger duplication' });
+              } finally {
+                setDuplicating(false);
+              }
+            }}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm transition-all shadow-lg active:scale-95 ${
+              duplicating 
+                ? 'bg-amber-400 text-white cursor-not-allowed' 
+                : 'bg-amber-600 text-white hover:bg-amber-700 shadow-amber-200'
+            }`}
+          >
+            {duplicating ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Duplicating...
+              </>
+            ) : (
+              <>Duplicate Galnewa to Test</>
+            )}
+          </button>
+          <button 
+            onClick={() => setShowCreateModal(true)}
+            className="flex items-center gap-2 px-6 py-2.5 bg-primary text-on-primary rounded-xl font-bold text-sm hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 active:scale-95"
+          >
+            <Plus size={18} />
+            Create Account
+          </button>
         </div>
       </div>
 
       {error && (
         <div className="p-4 bg-error/10 text-error rounded-xl font-body text-sm font-bold">
           {error}
+        </div>
+      )}
+
+      {duplicationStatus && (
+        <div className={`p-4 rounded-xl font-body text-sm font-bold flex items-center justify-between ${
+          duplicationStatus.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'
+        }`}>
+          <span>{duplicationStatus.message}</span>
+          <button onClick={() => setDuplicationStatus(null)} className="text-xs underline">Dismiss</button>
+        </div>
+      )}
+
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-surface-container-lowest p-8 rounded-[2rem] w-full max-w-md shadow-2xl"
+          >
+            <h2 className="text-2xl font-bold mb-6">Create New Account</h2>
+            <form onSubmit={handleCreateAccount} className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold mb-2">Organization Name</label>
+                <input 
+                  type="text"
+                  value={newAccountName}
+                  onChange={(e) => setNewAccountName(e.target.value)}
+                  placeholder="Enter organization name..."
+                  className="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary"
+                  autoFocus
+                  required
+                />
+              </div>
+              <div className="flex gap-3 pt-4">
+                <button 
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  className="flex-1 px-4 py-3 bg-surface-container-high rounded-xl font-bold hover:bg-surface-container-highest transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit"
+                  className="flex-1 px-4 py-3 bg-primary text-on-primary rounded-xl font-bold shadow-lg shadow-primary/10 hover:bg-primary/90 transition-all"
+                >
+                  Create
+                </button>
+              </div>
+            </form>
+          </motion.div>
         </div>
       )}
 

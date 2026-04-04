@@ -4,6 +4,7 @@ export interface User {
   name: string;
   role: 'super_admin' | 'admin' | 'standard';
   account_id: number;
+  account_name?: string;
 }
 
 export interface Account {
