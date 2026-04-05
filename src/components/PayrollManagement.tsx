@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Search, Filter, DollarSign, CreditCard, History, User, ChevronRight, X, ArrowUpRight, ArrowDownLeft, Wallet, Calendar, LayoutGrid, List } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Search, Filter, DollarSign, CreditCard, History, User, ChevronRight, X, ArrowUpRight, ArrowDownLeft, Wallet, Calendar, LayoutGrid, List, Briefcase } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Employee, Role, Section, PayrollAdvance, PayrollLoan } from '@/src/types';
+import { Employee, Role, Section, PayrollAdvance, PayrollLoan, Project } from '@/src/types';
 import { cn } from '@/src/lib/utils';
 import { fetchWithAuth } from '@/src/lib/api';
 
@@ -12,6 +13,8 @@ const PayrollManagement = () => {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<number>(0);
   const [sectionFilter, setSectionFilter] = useState<number>(0);
+  const [projectFilter, setProjectFilter] = useState<number>(0);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [showAdvanceModal, setShowAdvanceModal] = useState(false);
   const [showLoanModal, setShowLoanModal] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<any | null>(null);
@@ -22,7 +25,7 @@ const PayrollManagement = () => {
   const [activeTab, setActiveTab] = useState<'employees' | 'advances' | 'loans'>('employees');
   const [advances, setAdvances] = useState<PayrollAdvance[]>([]);
   const [loans, setLoans] = useState<PayrollLoan[]>([]);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [showHistoryModal, setShowHistoryModal] = useState(false);
@@ -69,6 +72,14 @@ const PayrollManagement = () => {
       });
   };
 
+  const fetchProjects = () => {
+    fetchWithAuth('/api/projects')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) setProjects(data);
+      });
+  };
+
   useEffect(() => {
     fetchPayrollSummary();
     fetchAdvances();
@@ -77,10 +88,12 @@ const PayrollManagement = () => {
   useEffect(() => {
     fetchRoles();
     fetchSections();
+    fetchProjects();
     fetchLoans();
   }, []);
 
-  const fetchEmployeeHistory = async (empId: string) => {
+  const fetchEmployeeHistory = async (empId: number) => {
+    if (!empId) return;
     try {
       const [advRes, loanRes] = await Promise.all([
         fetchWithAuth(`/api/payroll/advances?employee_id=${empId}`),
@@ -113,7 +126,7 @@ const PayrollManagement = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          employee_id: selectedEmployee.employee_id,
+          employee_id: selectedEmployee.id,
           amount
         })
       });
@@ -150,7 +163,7 @@ const PayrollManagement = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          employee_id: selectedEmployee.employee_id,
+          employee_id: selectedEmployee.id,
           amount,
           repayment_period: period,
           monthly_installment: monthlyInstallment
@@ -171,14 +184,26 @@ const PayrollManagement = () => {
     }
   };
 
+  const calculateActualSalary = (emp: any) => {
+    const baseSalary = Number(emp.salary) || 0;
+    const presentDays = Number(emp.present_days) || 0;
+    const halfDays = Number(emp.half_days) || 0;
+    const allowance = Number(emp.total_allowance) || 0;
+
+    if (emp.salary_type === 'Daily') {
+      return (presentDays + halfDays * 0.5) * baseSalary + allowance;
+    }
+    return baseSalary + allowance;
+  };
+
   const filteredEmployees = employees.filter(e => {
     const matchesSearch = e.name.toLowerCase().includes(search.toLowerCase()) || 
-      e.employee_id.toLowerCase().includes(search.toLowerCase());
+      (e.employee_number && e.employee_number.toLowerCase().includes(search.toLowerCase()));
     
-    // Note: In the summary API we don't have role_id and section_id directly, 
-    // but for the sake of this demo we can assume they are there or just filter by name/id
-    // If we need full filtering, we'd need to join roles/sections in the summary query
-    return matchesSearch;
+    const matchesRole = roleFilter === 0 || e.role_id === roleFilter;
+    const matchesProject = projectFilter === 0 || e.project_id === projectFilter;
+    
+    return matchesSearch && matchesRole && matchesProject;
   });
 
   return (
@@ -260,6 +285,35 @@ const PayrollManagement = () => {
                 className="w-full bg-surface-container-low border-none rounded-xl pl-12 pr-4 py-3 text-sm focus:ring-2 focus:ring-primary transition-all"
               />
             </div>
+            <div className="flex flex-wrap gap-3">
+              <select 
+                value={roleFilter}
+                onChange={(e) => setRoleFilter(parseInt(e.target.value))}
+                className="bg-surface-container-low border-none rounded-xl px-4 py-3 text-sm font-semibold text-on-surface-variant focus:ring-2 focus:ring-primary transition-all"
+              >
+                <option value="0">All Roles</option>
+                {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+              </select>
+              <select 
+                value={projectFilter}
+                onChange={(e) => setProjectFilter(parseInt(e.target.value))}
+                className="bg-surface-container-low border-none rounded-xl px-4 py-3 text-sm font-semibold text-on-surface-variant focus:ring-2 focus:ring-primary transition-all"
+              >
+                <option value="0">All Projects</option>
+                {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              <button 
+                onClick={() => {
+                  setSearch('');
+                  setRoleFilter(0);
+                  setProjectFilter(0);
+                }}
+                className="flex items-center gap-2 px-4 py-3 bg-surface-container-low rounded-xl text-sm font-semibold text-on-surface-variant hover:bg-surface-container-high transition-colors"
+              >
+                <X size={18} />
+                Clear
+              </button>
+            </div>
             <div className="flex bg-surface-container-low p-1 rounded-xl">
               <button 
                 onClick={() => setViewMode('grid')}
@@ -286,18 +340,18 @@ const PayrollManagement = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredEmployees.map((emp, i) => (
                 <motion.div
-                  key={emp.employee_id}
+                  key={emp.id}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.05 }}
                   className="group bg-surface-container-lowest p-6 rounded-2xl border border-outline-variant/10 hover:shadow-xl transition-all"
                 >
                   <div className="flex items-center gap-4 mb-6">
-                    <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-primary/10">
-                      <img src={emp.avatar_url || `https://picsum.photos/seed/${emp.employee_id}/200/200`} alt={emp.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                    </div>
+                    <Link to={`/directory/${emp.id}`} className="w-16 h-16 rounded-full overflow-hidden border-2 border-primary/10 hover:opacity-80 transition-opacity">
+                      <img src={emp.avatar_url || `https://picsum.photos/seed/${emp.id}/200/200`} alt={emp.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    </Link>
                     <div className="flex-1 min-w-0">
-                      <span className="px-2 py-0.5 bg-primary/10 text-primary text-[10px] font-bold rounded-md uppercase tracking-wider">{emp.employee_id}</span>
+                      <span className="px-2 py-0.5 bg-primary/10 text-primary text-[10px] font-bold rounded-md uppercase tracking-wider">{emp.employee_number}</span>
                       <h3 className="font-headline font-bold text-lg text-on-surface truncate">{emp.name}</h3>
                       <p className="text-sm text-on-surface-variant font-medium">{emp.salary_type} Salary</p>
                     </div>
@@ -305,20 +359,36 @@ const PayrollManagement = () => {
 
                   <div className="space-y-3 mb-6">
                     <div className="flex justify-between text-sm">
-                      <span className="text-on-surface-variant">Base Salary</span>
-                      <span className="font-bold text-on-surface">Rs. {emp.salary.toLocaleString()}</span>
+                      <span className="text-on-surface-variant">
+                        {emp.salary_type === 'Daily' ? `Attendance (${Number(emp.present_days) + Number(emp.half_days) * 0.5} Days)` : 'Base Salary'}
+                      </span>
+                      <span className="font-bold text-on-surface">
+                        Rs. {emp.salary_type === 'Daily' 
+                          ? ((Number(emp.present_days) + Number(emp.half_days) * 0.5) * Number(emp.salary)).toLocaleString()
+                          : Number(emp.salary).toLocaleString()}
+                      </span>
+                    </div>
+                    {Number(emp.total_allowance) > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-on-surface-variant">Allowances</span>
+                        <span className="font-bold text-green-600">+ Rs. {Number(emp.total_allowance).toLocaleString()}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-sm pt-2 border-t border-outline-variant/5">
+                      <span className="text-on-surface-variant font-bold">Total Salary</span>
+                      <span className="font-bold text-on-surface">Rs. {calculateActualSalary(emp).toLocaleString()}</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-on-surface-variant">Advances (Selected Month)</span>
-                      <span className="font-bold text-error">- Rs. {emp.total_advances.toLocaleString()}</span>
+                      <span className="text-on-surface-variant">Advances</span>
+                      <span className="font-bold text-error">- Rs. {Number(emp.total_advances).toLocaleString()}</span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-on-surface-variant">Loan Installments</span>
-                      <span className="font-bold text-error">- Rs. {emp.total_loan_installments.toLocaleString()}</span>
+                      <span className="font-bold text-error">- Rs. {Number(emp.total_loan_installments).toLocaleString()}</span>
                     </div>
                     <div className="pt-3 border-t border-outline-variant/10 flex justify-between">
                       <span className="font-bold text-on-surface">Payable Limit</span>
-                      <span className="font-bold text-primary">Rs. {(emp.salary - emp.total_advances - emp.total_loan_installments).toLocaleString()}</span>
+                      <span className="font-bold text-primary">Rs. {(calculateActualSalary(emp) - Number(emp.total_advances) - Number(emp.total_loan_installments)).toLocaleString()}</span>
                     </div>
                   </div>
 
@@ -347,7 +417,7 @@ const PayrollManagement = () => {
                   <button 
                     onClick={() => {
                       setSelectedEmployee(emp);
-                      fetchEmployeeHistory(emp.employee_id);
+                      fetchEmployeeHistory(emp.id);
                     }}
                     className="w-full flex items-center justify-center gap-2 py-2 bg-surface-container text-on-surface-variant rounded-xl text-xs font-bold hover:bg-surface-container-high transition-all"
                   >
@@ -363,7 +433,7 @@ const PayrollManagement = () => {
                 <thead>
                   <tr className="bg-surface-container-low">
                     <th className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">Employee</th>
-                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">Salary Info</th>
+                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">Salary</th>
                     <th className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">Deductions</th>
                     <th className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">Payable Limit</th>
                     <th className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant text-right">Actions</th>
@@ -371,35 +441,40 @@ const PayrollManagement = () => {
                 </thead>
                 <tbody className="divide-y divide-outline-variant/10">
                   {filteredEmployees.map(emp => (
-                    <tr key={emp.employee_id} className="hover:bg-surface-container-low/30 transition-colors">
+                    <tr key={emp.id} className="hover:bg-surface-container-low/30 transition-colors">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full overflow-hidden border border-primary/10">
-                            <img src={emp.avatar_url || `https://picsum.photos/seed/${emp.employee_id}/200/200`} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                          </div>
+                          <Link to={`/directory/${emp.id}`} className="w-10 h-10 rounded-full overflow-hidden border border-primary/10 hover:opacity-80 transition-opacity">
+                            <img src={emp.avatar_url || `https://picsum.photos/seed/${emp.id}/200/200`} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                          </Link>
                           <div>
                             <div className="font-bold text-on-surface">{emp.name}</div>
-                            <div className="text-[10px] font-bold text-primary uppercase tracking-wider">{emp.employee_id}</div>
+                            <div className="text-[10px] font-bold text-primary uppercase tracking-wider">{emp.employee_number}</div>
                           </div>
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="text-sm font-bold text-on-surface">Rs. {emp.salary.toLocaleString()}</div>
-                        <div className="text-[10px] text-on-surface-variant font-medium uppercase">{emp.salary_type}</div>
+                        <div className="text-sm font-bold text-on-surface">Rs. {calculateActualSalary(emp).toLocaleString()}</div>
+                        <div className="text-[10px] text-on-surface-variant font-medium uppercase">
+                          {emp.salary_type === 'Daily' 
+                            ? `${Number(emp.present_days) + Number(emp.half_days) * 0.5} Days @ Rs. ${emp.salary.toLocaleString()}`
+                            : `${emp.salary_type} Salary`}
+                          {Number(emp.total_allowance) > 0 && ` + Rs. ${Number(emp.total_allowance).toLocaleString()} Allow.`}
+                        </div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="text-xs text-error font-bold">- Rs. {(emp.total_advances + emp.total_loan_installments).toLocaleString()}</div>
-                        <div className="text-[10px] text-on-surface-variant">Adv: {emp.total_advances.toLocaleString()} | Loan: {emp.total_loan_installments.toLocaleString()}</div>
+                        <div className="text-xs text-error font-bold">- Rs. {(Number(emp.total_advances) + Number(emp.total_loan_installments)).toLocaleString()}</div>
+                        <div className="text-[10px] text-on-surface-variant">Adv: {Number(emp.total_advances).toLocaleString()} | Loan: {Number(emp.total_loan_installments).toLocaleString()}</div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="text-sm font-bold text-primary">Rs. {(emp.salary - emp.total_advances - emp.total_loan_installments).toLocaleString()}</div>
+                        <div className="text-sm font-bold text-primary">Rs. {(calculateActualSalary(emp) - Number(emp.total_advances) - Number(emp.total_loan_installments)).toLocaleString()}</div>
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex justify-end gap-2">
                           <button 
                             onClick={() => {
                               setSelectedEmployee(emp);
-                              fetchEmployeeHistory(emp.employee_id);
+                              fetchEmployeeHistory(emp.id);
                             }}
                             className="p-2 bg-surface-container text-on-surface-variant rounded-lg hover:bg-surface-container-high transition-all"
                             title="History"
@@ -453,7 +528,7 @@ const PayrollManagement = () => {
                 <tr key={adv.id} className="hover:bg-surface-container-lowest transition-colors">
                   <td className="px-6 py-4">
                     <div className="font-bold text-on-surface">{adv.name}</div>
-                    <div className="text-xs text-on-surface-variant">{adv.employee_id}</div>
+                    <div className="text-xs text-on-surface-variant">{adv.employee_number}</div>
                   </td>
                   <td className="px-6 py-4 text-sm text-on-surface">{new Date(adv.date).toLocaleDateString()}</td>
                   <td className="px-6 py-4 font-bold text-error">Rs. {adv.amount.toLocaleString()}</td>
@@ -489,7 +564,7 @@ const PayrollManagement = () => {
                 <tr key={loan.id} className="hover:bg-surface-container-lowest transition-colors">
                   <td className="px-6 py-4">
                     <div className="font-bold text-on-surface">{loan.name}</div>
-                    <div className="text-xs text-on-surface-variant">{loan.employee_id}</div>
+                    <div className="text-xs text-on-surface-variant">{loan.employee_number}</div>
                   </td>
                   <td className="px-6 py-4 font-bold text-on-surface">Rs. {loan.amount.toLocaleString()}</td>
                   <td className="px-6 py-4 text-sm text-on-surface">{loan.repayment_period} Months</td>
@@ -536,7 +611,7 @@ const PayrollManagement = () => {
               <form onSubmit={handleAdvanceSubmit} className="p-8 space-y-6">
                 <div className="flex items-center gap-4 p-4 bg-surface-container-low rounded-2xl">
                   <div className="w-12 h-12 rounded-full overflow-hidden">
-                    <img src={selectedEmployee.avatar_url || `https://picsum.photos/seed/${selectedEmployee.employee_id}/200/200`} alt="" className="w-full h-full object-cover" />
+                    <img src={selectedEmployee.avatar_url || `https://picsum.photos/seed/${selectedEmployee.id}/200/200`} alt="" className="w-full h-full object-cover" />
                   </div>
                   <div>
                     <div className="font-bold text-on-surface">{selectedEmployee.name}</div>
@@ -606,7 +681,7 @@ const PayrollManagement = () => {
               <form onSubmit={handleLoanSubmit} className="p-8 space-y-6">
                 <div className="flex items-center gap-4 p-4 bg-surface-container-low rounded-2xl">
                   <div className="w-12 h-12 rounded-full overflow-hidden">
-                    <img src={selectedEmployee.avatar_url || `https://picsum.photos/seed/${selectedEmployee.employee_id}/200/200`} alt="" className="w-full h-full object-cover" />
+                    <img src={selectedEmployee.avatar_url || `https://picsum.photos/seed/${selectedEmployee.id}/200/200`} alt="" className="w-full h-full object-cover" />
                   </div>
                   <div>
                     <div className="font-bold text-on-surface">{selectedEmployee.name}</div>
@@ -694,7 +769,7 @@ const PayrollManagement = () => {
               <div className="p-8 border-b border-outline-variant/10 flex items-center justify-between">
                 <div>
                   <h3 className="font-headline font-bold text-2xl text-on-surface">Payment History</h3>
-                  <p className="text-sm text-on-surface-variant">{selectedEmployee.name} ({selectedEmployee.employee_id})</p>
+                  <p className="text-sm text-on-surface-variant">{selectedEmployee.name} ({selectedEmployee.employee_number})</p>
                 </div>
                 <button onClick={() => setShowHistoryModal(false)} className="p-2 hover:bg-surface-container rounded-full transition-colors">
                   <X size={24} />

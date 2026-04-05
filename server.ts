@@ -93,7 +93,7 @@ export async function initDb() {
       CREATE TABLE IF NOT EXISTS e_employee_details (
         id SERIAL PRIMARY KEY,
         account_id INTEGER REFERENCES e_accounts(id) ON DELETE CASCADE,
-        employee_id TEXT NOT NULL,
+        employee_id INTEGER REFERENCES e_employees(id) ON DELETE CASCADE,
         title TEXT,
         content TEXT,
         image_data TEXT,
@@ -104,20 +104,28 @@ export async function initDb() {
       CREATE TABLE IF NOT EXISTS e_attendance (
         id SERIAL PRIMARY KEY,
         account_id INTEGER REFERENCES e_accounts(id) ON DELETE CASCADE,
-        employee_id TEXT NOT NULL,
+        employee_id INTEGER REFERENCES e_employees(id) ON DELETE CASCADE,
         date DATE NOT NULL,
         check_in TIME,
         check_out TIME,
         status TEXT,
         section_id INTEGER REFERENCES e_sections(id),
         project_id INTEGER REFERENCES e_projects(id),
+        allowance DECIMAL(10, 2) DEFAULT 0,
         deleted_at TIMESTAMP
       );
+
+      DO $$ 
+      BEGIN 
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='e_attendance' AND column_name='allowance') THEN
+          ALTER TABLE e_attendance ADD COLUMN allowance DECIMAL(10, 2) DEFAULT 0;
+        END IF;
+      END $$;
 
       CREATE TABLE IF NOT EXISTS e_leaves (
         id SERIAL PRIMARY KEY,
         account_id INTEGER REFERENCES e_accounts(id) ON DELETE CASCADE,
-        employee_id TEXT NOT NULL,
+        employee_id INTEGER REFERENCES e_employees(id) ON DELETE CASCADE,
         type TEXT NOT NULL,
         start_date DATE NOT NULL,
         end_date DATE NOT NULL,
@@ -148,7 +156,7 @@ export async function initDb() {
       CREATE TABLE IF NOT EXISTS e_payroll_advances (
         id SERIAL PRIMARY KEY,
         account_id INTEGER REFERENCES e_accounts(id) ON DELETE CASCADE,
-        employee_id TEXT NOT NULL,
+        employee_id INTEGER REFERENCES e_employees(id) ON DELETE CASCADE,
         amount NUMERIC NOT NULL,
         date DATE DEFAULT CURRENT_DATE,
         status TEXT DEFAULT 'Approved',
@@ -158,7 +166,7 @@ export async function initDb() {
       CREATE TABLE IF NOT EXISTS e_payroll_loans (
         id SERIAL PRIMARY KEY,
         account_id INTEGER REFERENCES e_accounts(id) ON DELETE CASCADE,
-        employee_id TEXT NOT NULL,
+        employee_id INTEGER REFERENCES e_employees(id) ON DELETE CASCADE,
         amount NUMERIC NOT NULL,
         repayment_period INTEGER NOT NULL,
         monthly_installment NUMERIC NOT NULL,
@@ -167,6 +175,41 @@ export async function initDb() {
         deleted_at TIMESTAMP
       );
     `);
+
+    // Migration: Refactor employee_id to use integer ID instead of employee number
+    try {
+      const tablesToMigrate = ['e_employee_details', 'e_attendance', 'e_leaves', 'e_payroll_advances', 'e_payroll_loans'];
+      for (const tableName of tablesToMigrate) {
+        // Check if employee_id is still TEXT
+        const colInfo = await query(`
+          SELECT data_type FROM information_schema.columns 
+          WHERE table_name = $1 AND column_name = 'employee_id'
+        `, [tableName]);
+        
+        if (colInfo.rows.length > 0 && colInfo.rows[0].data_type === 'text') {
+          console.log(`Migrating ${tableName}.employee_id from TEXT to INTEGER...`);
+          
+          // 1. Rename old column
+          await query(`ALTER TABLE ${tableName} RENAME COLUMN employee_id TO employee_number`);
+          
+          // 2. Add new column
+          await query(`ALTER TABLE ${tableName} ADD COLUMN employee_id INTEGER REFERENCES e_employees(id) ON DELETE CASCADE`);
+          
+          // 3. Populate new column
+          await query(`
+            UPDATE ${tableName} t
+            SET employee_id = e.id
+            FROM e_employees e
+            WHERE t.account_id = e.account_id AND t.employee_number = e.employee_id
+          `);
+          
+          // 4. Drop old column (optional, but let's keep it for now as employee_number just in case, or drop if we are sure)
+          // For now, let's keep it as employee_number.
+        }
+      }
+    } catch (migErr) {
+      console.error('Employee ID migration error:', migErr);
+    }
 
     // Migration: Add role_id and section_id to e_employees and e_attendance if they don't exist
     try {
@@ -273,17 +316,27 @@ export async function initDb() {
       `, [accountId]);
 
       await query(`
-        INSERT INTO e_attendance (account_id, employee_id, date, check_in, check_out, status, section)
-        VALUES 
-        ($1, 'EMP-2021-084', '2023-08-24', '08:14:00', '17:32:00', 'Present', 'Operations & Logistics'),
-        ($1, 'EMP-2021-084', '2023-08-23', '08:02:00', '17:45:00', 'Present', 'Operations & Logistics')
+        INSERT INTO e_attendance (account_id, employee_id, date, check_in, check_out, status, section_id)
+        SELECT account_id, id, '2023-08-24', '08:14:00', '17:32:00', 'Present', section_id
+        FROM e_employees WHERE employee_id = 'EMP-2021-084' AND account_id = $1
+      `, [accountId]);
+
+      await query(`
+        INSERT INTO e_attendance (account_id, employee_id, date, check_in, check_out, status, section_id)
+        SELECT account_id, id, '2023-08-23', '08:02:00', '17:45:00', 'Present', section_id
+        FROM e_employees WHERE employee_id = 'EMP-2021-084' AND account_id = $1
       `, [accountId]);
 
       await query(`
         INSERT INTO e_leaves (account_id, employee_id, type, start_date, end_date, days, status, applied_on)
-        VALUES 
-        ($1, 'EMP-2021-084', 'Annual Vacation', '2023-10-12', '2023-10-18', 5, 'Approved', '2023-09-28'),
-        ($1, 'EMP-2021-084', 'Medical Leave', '2023-11-05', '2023-11-05', 1, 'Pending', '2023-11-04')
+        SELECT account_id, id, 'Annual Vacation', '2023-10-12', '2023-10-18', 5, 'Approved', '2023-09-28'
+        FROM e_employees WHERE employee_id = 'EMP-2021-084' AND account_id = $1
+      `, [accountId]);
+
+      await query(`
+        INSERT INTO e_leaves (account_id, employee_id, type, start_date, end_date, days, status, applied_on)
+        SELECT account_id, id, 'Medical Leave', '2023-11-05', '2023-11-05', 1, 'Pending', '2023-11-04'
+        FROM e_employees WHERE employee_id = 'EMP-2021-084' AND account_id = $1
       `, [accountId]);
 
       await query(`
@@ -580,7 +633,7 @@ const authenticate = (req: any, res: any, next: any) => {
       const result = await query(
         `UPDATE e_employees 
          SET name = $1, nickname = $2, role_id = $3, join_date = $4, mobile = $5, whatsapp = $6, nic = $7, tax_residency = $8, section_id = $9, salary_type = $10, salary = $11, avatar_url = $12, status = $13
-         WHERE employee_id = $14 AND account_id = $15 AND deleted_at IS NULL RETURNING *`,
+         WHERE id = $14 AND account_id = $15 AND deleted_at IS NULL RETURNING *`,
         [
           name, 
           nickname, 
@@ -635,7 +688,7 @@ const authenticate = (req: any, res: any, next: any) => {
   app.delete("/api/employees/:id", authenticate, async (req: any, res) => {
     const { account_id } = req.user;
     try {
-      await query("UPDATE e_employees SET deleted_at = CURRENT_TIMESTAMP WHERE employee_id = $1 AND account_id = $2", [req.params.id, account_id]);
+      await query("UPDATE e_employees SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1 AND account_id = $2", [req.params.id, account_id]);
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: "Failed to delete employee" });
@@ -650,7 +703,7 @@ const authenticate = (req: any, res: any, next: any) => {
         FROM e_employees e
         LEFT JOIN e_roles r ON e.role_id = r.id
         LEFT JOIN e_sections s ON e.section_id = s.id
-        WHERE e.employee_id = $1 AND e.account_id = $2 AND e.deleted_at IS NULL
+        WHERE e.id = $1 AND e.account_id = $2 AND e.deleted_at IS NULL
       `, [req.params.id, account_id]);
       if (result.rows.length === 0) return res.status(404).json({ error: "Employee not found" });
       res.json(result.rows[0]);
@@ -664,9 +717,9 @@ const authenticate = (req: any, res: any, next: any) => {
     const { date } = req.query;
     try {
       let queryStr = `
-        SELECT a.*, e.name, e.avatar_url, s.name as section, p.name as project 
+        SELECT a.*, e.name, e.avatar_url, e.employee_id as employee_number, s.name as section, p.name as project 
         FROM e_attendance a 
-        JOIN e_employees e ON a.employee_id = e.employee_id AND a.account_id = e.account_id
+        JOIN e_employees e ON a.employee_id = e.id
         LEFT JOIN e_sections s ON a.section_id = s.id
         LEFT JOIN e_projects p ON a.project_id = p.id
         WHERE a.account_id = $1 AND a.deleted_at IS NULL AND e.deleted_at IS NULL
@@ -709,9 +762,9 @@ const authenticate = (req: any, res: any, next: any) => {
       
       // Fetch joined data for response
       const joinedResult = await query(`
-        SELECT a.*, e.name, e.avatar_url, s.name as section, p.name as project 
+        SELECT a.*, e.name, e.avatar_url, e.employee_id as employee_number, s.name as section, p.name as project 
         FROM e_attendance a 
-        JOIN e_employees e ON a.employee_id = e.employee_id AND a.account_id = e.account_id
+        JOIN e_employees e ON a.employee_id = e.id
         LEFT JOIN e_sections s ON a.section_id = s.id
         LEFT JOIN e_projects p ON a.project_id = p.id
         WHERE a.id = $1
@@ -724,28 +777,47 @@ const authenticate = (req: any, res: any, next: any) => {
     }
   });
 
-  app.get("/api/employees/:employee_id/attendance-status", authenticate, async (req: any, res) => {
+  app.patch("/api/attendance/:id/allowance", authenticate, async (req: any, res) => {
     const { account_id } = req.user;
-    const { employee_id } = req.params;
+    const { id } = req.params;
+    const { allowance } = req.body;
+    try {
+      const result = await query(
+        "UPDATE e_attendance SET allowance = $1 WHERE id = $2 AND account_id = $3 RETURNING *",
+        [allowance, id, account_id]
+      );
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: "Attendance record not found" });
+      }
+      res.json(result.rows[0]);
+    } catch (err) {
+      console.error("Error updating allowance:", err);
+      res.status(500).json({ error: "Failed to update allowance" });
+    }
+  });
+
+  app.get("/api/employees/:id/attendance-status", authenticate, async (req: any, res) => {
+    const { account_id } = req.user;
+    const { id } = req.params;
     const today = new Date().toISOString().split('T')[0];
 
     try {
       // Get today's attendance
       const todayAttendance = await query(
         "SELECT * FROM e_attendance WHERE account_id = $1 AND employee_id = $2 AND date = $3 AND deleted_at IS NULL",
-        [account_id, employee_id, today]
+        [account_id, id, today]
       );
 
       // Get last worked section from most recent attendance record
       const lastAttendance = await query(
         "SELECT section_id, project_id FROM e_attendance WHERE account_id = $1 AND employee_id = $2 AND deleted_at IS NULL ORDER BY date DESC, check_in DESC LIMIT 1",
-        [account_id, employee_id]
+        [account_id, id]
       );
 
       // Also get employee's default section
       const emp = await query(
-        "SELECT section_id FROM e_employees WHERE account_id = $1 AND employee_id = $2 AND deleted_at IS NULL",
-        [account_id, employee_id]
+        "SELECT section_id FROM e_employees WHERE account_id = $1 AND id = $2 AND deleted_at IS NULL",
+        [account_id, id]
       );
 
       res.json({
@@ -787,9 +859,9 @@ const authenticate = (req: any, res: any, next: any) => {
 
       // Fetch joined data for response
       const joinedResult = await query(`
-        SELECT a.*, e.name, e.avatar_url, s.name as section, p.name as project 
+        SELECT a.*, e.name, e.avatar_url, e.employee_id as employee_number, s.name as section, p.name as project 
         FROM e_attendance a 
-        JOIN e_employees e ON a.employee_id = e.employee_id AND a.account_id = e.account_id
+        JOIN e_employees e ON a.employee_id = e.id
         LEFT JOIN e_sections s ON a.section_id = s.id
         LEFT JOIN e_projects p ON a.project_id = p.id
         WHERE a.id = $1
@@ -823,7 +895,7 @@ const authenticate = (req: any, res: any, next: any) => {
       // Check for existing record today
       const attendanceCheck = await query(
         "SELECT * FROM e_attendance WHERE account_id = $1 AND employee_id = $2 AND date = $3",
-        [account_id, employee_id, today]
+        [account_id, employee.id, today]
       );
       
       let result;
@@ -841,7 +913,7 @@ const authenticate = (req: any, res: any, next: any) => {
 
         result = await query(
           "INSERT INTO e_attendance (account_id, employee_id, date, check_in, status, section_id, project_id) VALUES ($1, $2, $3, CURRENT_TIME, $4, $5, $6) RETURNING *",
-          [account_id, employee_id, today, status, employee.section_id, null] // project_id null for now on fingerprint
+          [account_id, employee.id, today, status, employee.section_id, null] // project_id null for now on fingerprint
         );
         action = "Check-in";
       } else {
@@ -856,9 +928,9 @@ const authenticate = (req: any, res: any, next: any) => {
       
       // Fetch joined data for response
       const joinedResult = await query(`
-        SELECT a.*, e.name, e.avatar_url, s.name as section, p.name as project 
+        SELECT a.*, e.name, e.avatar_url, e.employee_id as employee_number, s.name as section, p.name as project 
         FROM e_attendance a 
-        JOIN e_employees e ON a.employee_id = e.employee_id AND a.account_id = e.account_id
+        JOIN e_employees e ON a.employee_id = e.id
         LEFT JOIN e_sections s ON a.section_id = s.id
         LEFT JOIN e_projects p ON a.project_id = p.id
         WHERE a.id = $1
@@ -880,9 +952,9 @@ const authenticate = (req: any, res: any, next: any) => {
     const { account_id } = req.user;
     try {
       const result = await query(`
-        SELECT l.*, e.name 
+        SELECT l.*, e.name, e.employee_id as employee_number 
         FROM e_leaves l 
-        JOIN e_employees e ON l.employee_id = e.employee_id AND l.account_id = e.account_id
+        JOIN e_employees e ON l.employee_id = e.id
         WHERE l.account_id = $1 AND l.deleted_at IS NULL AND e.deleted_at IS NULL
         ORDER BY l.start_date ASC
       `, [account_id]);
@@ -1086,9 +1158,9 @@ const authenticate = (req: any, res: any, next: any) => {
     const { month, year, employee_id } = req.query;
     try {
       let q = `
-        SELECT a.*, e.name 
+        SELECT a.*, e.name, e.employee_id as employee_number 
         FROM e_payroll_advances a 
-        JOIN e_employees e ON a.employee_id = e.employee_id AND a.account_id = e.account_id
+        JOIN e_employees e ON a.employee_id = e.id
         WHERE a.account_id = $1 AND a.deleted_at IS NULL AND e.deleted_at IS NULL
       `;
       const params: any[] = [account_id];
@@ -1131,9 +1203,9 @@ const authenticate = (req: any, res: any, next: any) => {
     const { employee_id } = req.query;
     try {
       let q = `
-        SELECT l.*, e.name 
+        SELECT l.*, e.name, e.employee_id as employee_number 
         FROM e_payroll_loans l 
-        JOIN e_employees e ON l.employee_id = e.employee_id AND l.account_id = e.account_id
+        JOIN e_employees e ON l.employee_id = e.id
         WHERE l.account_id = $1 AND l.deleted_at IS NULL AND e.deleted_at IS NULL
       `;
       const params: any[] = [account_id];
@@ -1174,11 +1246,15 @@ const authenticate = (req: any, res: any, next: any) => {
     const dateFilter = (month && year) ? `$2::date` : 'CURRENT_DATE';
     
     try {
-      // Get all employees with their salary info
+      // Get all employees with their salary info and attendance counts for the month
       const employees = await query(`
-        SELECT e.employee_id, e.name, e.salary, e.salary_type, e.avatar_url,
-               COALESCE((SELECT SUM(amount) FROM e_payroll_advances WHERE employee_id = e.employee_id AND account_id = e.account_id AND deleted_at IS NULL AND date >= date_trunc('month', ${dateFilter}) AND date < (date_trunc('month', ${dateFilter}) + interval '1 month')), 0) as total_advances,
-               COALESCE((SELECT SUM(monthly_installment) FROM e_payroll_loans WHERE employee_id = e.employee_id AND account_id = e.account_id AND deleted_at IS NULL AND status = 'Approved'), 0) as total_loan_installments
+        SELECT e.id, e.employee_id as employee_number, e.name, e.salary, e.salary_type, e.avatar_url, e.role_id, e.section_id,
+               (SELECT project_id FROM e_attendance WHERE employee_id = e.id AND account_id = e.account_id AND deleted_at IS NULL ORDER BY date DESC, id DESC LIMIT 1) as project_id,
+               COALESCE((SELECT COUNT(*) FROM e_attendance WHERE employee_id = e.id AND account_id = e.account_id AND status = 'Present' AND deleted_at IS NULL AND date >= date_trunc('month', ${dateFilter}) AND date < (date_trunc('month', ${dateFilter}) + interval '1 month')), 0) as present_days,
+               COALESCE((SELECT COUNT(*) FROM e_attendance WHERE employee_id = e.id AND account_id = e.account_id AND status = 'Half-Day' AND deleted_at IS NULL AND date >= date_trunc('month', ${dateFilter}) AND date < (date_trunc('month', ${dateFilter}) + interval '1 month')), 0) as half_days,
+               COALESCE((SELECT SUM(allowance) FROM e_attendance WHERE employee_id = e.id AND account_id = e.account_id AND deleted_at IS NULL AND date >= date_trunc('month', ${dateFilter}) AND date < (date_trunc('month', ${dateFilter}) + interval '1 month')), 0) as total_allowance,
+               COALESCE((SELECT SUM(amount) FROM e_payroll_advances WHERE employee_id = e.id AND account_id = e.account_id AND deleted_at IS NULL AND date >= date_trunc('month', ${dateFilter}) AND date < (date_trunc('month', ${dateFilter}) + interval '1 month')), 0) as total_advances,
+               COALESCE((SELECT SUM(monthly_installment) FROM e_payroll_loans WHERE employee_id = e.id AND account_id = e.account_id AND deleted_at IS NULL AND status = 'Approved'), 0) as total_loan_installments
         FROM e_employees e
         WHERE e.account_id = $1 AND e.deleted_at IS NULL
       `, [account_id, ...(month && year ? [targetDate] : [])]);

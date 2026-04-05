@@ -15,7 +15,7 @@ const Directory = () => {
   const [sectionFilter, setSectionFilter] = useState<number>(0);
   const [showAddModal, setShowAddModal] = useState(false);
   const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
   
   const initialEmployeeState = {
     name: '',
@@ -165,7 +165,7 @@ const Directory = () => {
         
         // If there's detail data, save it
         if (detailData.title || detailData.content || detailData.image_data) {
-          await fetchWithAuth(`/api/employees/${savedEmp.employee_id}/details`, {
+          await fetchWithAuth(`/api/employees/${savedEmp.id}/details`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(detailData)
@@ -206,7 +206,7 @@ const Directory = () => {
       avatar_url: emp.avatar_url || '',
       status: emp.status || 'On-Duty'
     });
-    setEditingId(emp.employee_id);
+    setEditingId(emp.id);
     setModalMode('edit');
     setShowAddModal(true);
   };
@@ -289,7 +289,7 @@ const Directory = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filtered.map((emp, i) => (
           <motion.div
-            key={emp.employee_id}
+            key={emp.id}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.05 }}
@@ -304,10 +304,10 @@ const Directory = () => {
               >
                 <Edit size={16} />
               </button>
-              <Link to={`/directory/${emp.employee_id}`}>
+              <Link to={`/directory/${emp.id}`}>
                 <div className="flex items-center gap-4 mb-6">
                   <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-primary/10">
-                    <img src={emp.avatar_url || `https://picsum.photos/seed/${emp.employee_id}/200/200`} alt={emp.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    <img src={emp.avatar_url || `https://picsum.photos/seed/${emp.id}/200/200`} alt={emp.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">

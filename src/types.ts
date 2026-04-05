@@ -46,27 +46,30 @@ export interface Employee {
   avatar_url: string;
   role?: string; // For display
   section?: string; // For display
+  project_id?: number;
   project?: string; // For display
 }
 
 export interface Attendance {
   id: number;
-  employee_id: string;
+  employee_id: number;
   date: string;
   check_in: string;
   check_out: string;
   status: string;
   section_id: number;
   project_id: number;
+  allowance: number;
   name?: string;
   avatar_url?: string;
   section?: string; // For display
   project?: string; // For display
+  employee_number?: string; // For display
 }
 
 export interface Leave {
   id: number;
-  employee_id: string;
+  employee_id: number;
   type: string;
   start_date: string;
   end_date: string;
@@ -74,6 +77,7 @@ export interface Leave {
   status: string;
   applied_on: string;
   name?: string;
+  employee_number?: string; // For display
 }
 
 export interface Alert {
@@ -97,20 +101,22 @@ export interface AppSettings {
 
 export interface PayrollAdvance {
   id: number;
-  employee_id: string;
+  employee_id: number;
   amount: number;
   date: string;
   status: string;
   name?: string;
+  employee_number?: string; // For display
 }
 
 export interface PayrollLoan {
   id: number;
-  employee_id: string;
+  employee_id: number;
   amount: number;
   date: string;
   status: string;
   repayment_period: number; // in months
   monthly_installment: number;
   name?: string;
+  employee_number?: string; // For display
 }

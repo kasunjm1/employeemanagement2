@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { UserPlus, Calendar, CheckCircle2, Clock, XCircle, ChevronRight, Briefcase, LogIn, LogOut, Users, Fingerprint, RefreshCw } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Employee, Attendance, Project } from '@/src/types';
@@ -13,7 +14,7 @@ const AttendanceLogging = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [formData, setFormData] = useState({
     id: null as number | null,
-    employee_id: '',
+    employee_id: 0,
     section_id: 0,
     project_id: 0,
     check_in: '',
@@ -134,7 +135,7 @@ const AttendanceLogging = () => {
 
           setFormData({ 
             id: null,
-            employee_id: '', 
+            employee_id: 0, 
             section_id: 0,
             project_id: 0, 
             check_in: '', 
@@ -156,12 +157,12 @@ const AttendanceLogging = () => {
     setSelectedEmployee(emp);
     
     try {
-      const res = await fetchWithAuth(`/api/employees/${emp.employee_id}/attendance-status`);
+      const res = await fetchWithAuth(`/api/employees/${emp.id}/attendance-status`);
       const data = await res.json();
       
       setFormData(prev => ({
         ...prev,
-        employee_id: emp.employee_id,
+        employee_id: emp.id,
         section_id: data.last_section_id || 0,
         project_id: data.last_project_id || 0,
         id: data.today?.id || null,
@@ -170,7 +171,7 @@ const AttendanceLogging = () => {
       }));
     } catch (err) {
       console.error('Error fetching employee status:', err);
-      setFormData(prev => ({ ...prev, employee_id: emp.employee_id, section_id: 0, project_id: 0 }));
+      setFormData(prev => ({ ...prev, employee_id: emp.id, section_id: 0, project_id: 0 }));
     }
   };
 
@@ -243,12 +244,14 @@ const AttendanceLogging = () => {
             <div className="w-full lg:w-1/3 flex items-center gap-4">
               <div className="w-16 h-16 rounded-2xl overflow-hidden border-2 border-primary/10 flex-shrink-0 bg-surface-container-high">
                 {selectedEmployee ? (
-                  <img 
-                    src={selectedEmployee.avatar_url || `https://picsum.photos/seed/${selectedEmployee.employee_id}/200/200`} 
-                    alt={selectedEmployee.name} 
-                    className="w-full h-full object-cover"
-                    referrerPolicy="no-referrer"
-                  />
+                  <Link to={`/directory/${selectedEmployee.id}`}>
+                    <img 
+                      src={selectedEmployee.avatar_url || `https://picsum.photos/seed/${selectedEmployee.id}/200/200`} 
+                      alt={selectedEmployee.name} 
+                      className="w-full h-full object-cover hover:opacity-80 transition-opacity"
+                      referrerPolicy="no-referrer"
+                    />
+                  </Link>
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-outline">
                     <Users size={24} />
@@ -268,7 +271,7 @@ const AttendanceLogging = () => {
                       if (!e.target.value) {
                         setFormData({ 
                           id: null,
-                          employee_id: '', 
+                          employee_id: 0, 
                           section_id: 0,
                           project_id: 0, 
                           check_in: '', 
@@ -306,16 +309,22 @@ const AttendanceLogging = () => {
                   <div className="absolute z-20 w-full mt-2 bg-surface-container-lowest border border-outline-variant rounded-xl shadow-xl max-h-48 overflow-y-auto">
                     {filteredEmployees.map(emp => (
                       <div 
-                        key={emp.employee_id}
+                        key={emp.id}
                         onClick={() => handleEmployeeSelect(emp)}
                         className="px-4 py-3 hover:bg-surface-container-high cursor-pointer flex items-center gap-3 border-b border-outline-variant last:border-none"
                       >
-                        <img 
-                          src={emp.avatar_url || `https://picsum.photos/seed/${emp.employee_id}/200/200`} 
-                          alt={emp.name} 
-                          className="w-8 h-8 rounded-full object-cover"
-                          referrerPolicy="no-referrer"
-                        />
+                        <Link 
+                          to={`/directory/${emp.id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="flex-shrink-0"
+                        >
+                          <img 
+                            src={emp.avatar_url || `https://picsum.photos/seed/${emp.id}/200/200`} 
+                            alt={emp.name} 
+                            className="w-8 h-8 rounded-full object-cover hover:opacity-80 transition-opacity"
+                            referrerPolicy="no-referrer"
+                          />
+                        </Link>
                         <div className="flex flex-col">
                           <span className="text-sm font-bold text-on-surface">{emp.name}</span>
                           <span className="text-[10px] text-on-surface-variant">{emp.employee_id}</span>
@@ -474,16 +483,17 @@ const AttendanceLogging = () => {
                   historyLogs.map((log) => (
                     <tr key={log.id} className="hover:bg-surface-container-low transition-colors group">
                       <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
+                        <Link to={`/directory/${log.employee_id}`} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
                           <img 
                             src={log.avatar_url || `https://picsum.photos/seed/${log.employee_id}/200/200`} 
                             alt={log.name} 
                             className="w-8 h-8 rounded-full object-cover border border-outline-variant"
+                            referrerPolicy="no-referrer"
                           />
                           <span className="text-sm font-bold text-on-surface">{log.name}</span>
-                        </div>
+                        </Link>
                       </td>
-                      <td className="px-6 py-4 text-xs font-medium text-on-surface-variant">{log.employee_id}</td>
+                      <td className="px-6 py-4 text-xs font-medium text-on-surface-variant">{log.employee_number}</td>
                       <td className="px-6 py-4 text-xs font-medium text-on-surface-variant">{log.project || 'N/A'}</td>
                       <td className="px-6 py-4">
                         <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600">
@@ -522,7 +532,7 @@ const AttendanceLogging = () => {
                       <td className="px-6 py-4">
                         <button 
                           onClick={() => {
-                            const emp = employees.find(e => e.employee_id === log.employee_id);
+                            const emp = employees.find(e => e.id === log.employee_id);
                             if (emp) handleEmployeeSelect(emp);
                           }}
                           className="p-2 text-primary hover:bg-primary/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100"

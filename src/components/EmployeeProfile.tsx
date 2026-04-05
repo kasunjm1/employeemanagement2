@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ChevronRight, Edit, Edit3, Trash2, Phone, MessageSquare, BadgeCheck, Building2, Calendar, User } from 'lucide-react';
+import { ChevronRight, Edit, Edit2, Edit3, Trash2, Phone, MessageSquare, BadgeCheck, Building2, Calendar, User, DollarSign, Plus } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Employee, Attendance } from '@/src/types';
 import { cn, formatTime, formatDate } from '@/src/lib/utils';
@@ -11,9 +11,10 @@ const EmployeeProfile = () => {
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [logs, setLogs] = useState<Attendance[]>([]);
   const [details, setDetails] = useState<{id: number, title: string, content: string, image_data: string, created_at: string}[]>([]);
+  const [editingAllowanceId, setEditingAllowanceId] = useState<number | null>(null);
 
   useEffect(() => {
-    if (id) {
+    if (id && id !== 'undefined') {
       const handleFetch = (url: string, setter: (data: any) => void) => {
         fetchWithAuth(url)
           .then(res => {
@@ -36,7 +37,7 @@ const EmployeeProfile = () => {
       handleFetch(`/api/employees/${id}/details`, setDetails);
       handleFetch(`/api/attendance`, (data) => {
         if (Array.isArray(data)) {
-          setLogs(data.filter((l: Attendance) => l.employee_id === id).slice(0, 5));
+          setLogs(data.filter((l: Attendance) => l.employee_id === Number(id)).slice(0, 5));
         }
       });
     }
@@ -55,6 +56,22 @@ const EmployeeProfile = () => {
         console.error(err);
         alert('An error occurred');
       }
+    }
+  };
+
+  const handleUpdateAllowance = async (logId: number, allowance: number) => {
+    try {
+      const res = await fetchWithAuth(`/api/attendance/${logId}/allowance`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ allowance: Number(allowance) })
+      });
+      if (res.ok) {
+        const updatedLog = await res.json();
+        setLogs(prev => prev.map(l => l.id === logId ? { ...l, allowance: Number(updatedLog.allowance) } : l));
+      }
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -101,7 +118,7 @@ const EmployeeProfile = () => {
                 Record Attendance
               </button>
               <Link 
-                to={`/directory?edit=${employee.employee_id}`}
+                to={`/directory?edit=${employee.id}`}
                 className="flex items-center gap-2 bg-surface-container-high text-on-surface-variant px-5 py-2.5 rounded-full font-semibold text-sm transition-all active:scale-95"
               >
                 <Edit3 size={18} />
@@ -285,22 +302,76 @@ const EmployeeProfile = () => {
                 <th className="px-8 py-4">Check-in</th>
                 <th className="px-8 py-4">Check-out</th>
                 <th className="px-8 py-4">Status</th>
+                <th className="px-8 py-4">Salary (Rs.)</th>
+                <th className="px-8 py-4">Allowance (Rs.)</th>
+                <th className="px-8 py-4 text-right">Total (Rs.)</th>
               </tr>
             </thead>
             <tbody className="text-sm font-medium">
-              {logs.map((log) => (
-                <tr key={log.id} className="hover:bg-surface-container-low transition-colors group">
-                  <td className="px-8 py-4 border-t border-surface-container-low">{formatDate(log.date)}</td>
-                  <td className="px-8 py-4 border-t border-surface-container-low">{formatTime(log.check_in)}</td>
-                  <td className="px-8 py-4 border-t border-surface-container-low">{formatTime(log.check_out)}</td>
-                  <td className="px-8 py-4 border-t border-surface-container-low">
-                    <span className={cn(
-                      "px-2 py-1 text-[10px] font-bold rounded uppercase",
-                      log.status === 'Present' ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
-                    )}>{log.status}</span>
-                  </td>
-                </tr>
-              ))}
+              {logs.map((log) => {
+                const baseDailySalary = employee.salary_type === 'Daily' ? (employee.salary || 0) : (employee.salary || 0) / 30;
+                const dailySalary = log.status === 'Half-Day' ? baseDailySalary / 2 : baseDailySalary;
+                const totalPayment = dailySalary + (Number(log.allowance) || 0);
+                
+                return (
+                  <tr key={log.id} className="hover:bg-surface-container-low transition-colors group">
+                    <td className="px-8 py-4 border-t border-surface-container-low">{formatDate(log.date)}</td>
+                    <td className="px-8 py-4 border-t border-surface-container-low">{formatTime(log.check_in)}</td>
+                    <td className="px-8 py-4 border-t border-surface-container-low">{formatTime(log.check_out)}</td>
+                    <td className="px-8 py-4 border-t border-surface-container-low">
+                      <span className={cn(
+                        "px-2 py-1 text-[10px] font-bold rounded uppercase",
+                        log.status === 'Present' ? "bg-emerald-50 text-emerald-700" : 
+                        log.status === 'Half-Day' ? "bg-amber-50 text-amber-700" :
+                        "bg-slate-50 text-slate-700"
+                      )}>{log.status}</span>
+                    </td>
+                    <td className="px-8 py-4 border-t border-surface-container-low font-medium">
+                      Rs. {dailySalary.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                    <td className="px-8 py-4 border-t border-surface-container-low">
+                      <div className="flex items-center gap-2 group/allowance">
+                        <div className="relative flex items-center">
+                          {editingAllowanceId === log.id ? (
+                            <input 
+                              type="number"
+                              defaultValue={log.allowance || 0}
+                              autoFocus
+                              onBlur={(e) => {
+                                handleUpdateAllowance(log.id, Number(e.target.value));
+                                setEditingAllowanceId(null);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  handleUpdateAllowance(log.id, Number((e.target as HTMLInputElement).value));
+                                  setEditingAllowanceId(null);
+                                }
+                                if (e.key === 'Escape') {
+                                  setEditingAllowanceId(null);
+                                }
+                              }}
+                              className="w-24 bg-surface-container-highest border-none rounded pl-2 pr-2 py-1 text-xs font-bold focus:ring-1 focus:ring-primary transition-all"
+                            />
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold">{log.allowance || 0}</span>
+                              <button 
+                                onClick={() => setEditingAllowanceId(log.id)}
+                                className="p-1 hover:bg-surface-container-high rounded transition-colors"
+                              >
+                                <Edit2 size={12} className="text-on-surface-variant opacity-40 group-hover/allowance:opacity-100 transition-opacity" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-8 py-4 border-t border-surface-container-low text-right font-bold text-primary">
+                      Rs. {totalPayment.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
