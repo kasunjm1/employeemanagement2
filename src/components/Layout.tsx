@@ -1,8 +1,9 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Grid, Users, Timer, CalendarOff, Settings, Bell, LogOut, Building2, CreditCard } from 'lucide-react';
+import { LayoutDashboard, Grid, Users, Timer, CalendarOff, Settings, Bell, LogOut, Building2, CreditCard, Sun, Moon } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import { User } from '../types';
+import { useTheme } from '../context/ThemeContext';
 
 const Sidebar = ({ onLogout }: { onLogout?: () => void }) => {
   const user: User = JSON.parse(localStorage.getItem('ems_user') || '{}');
@@ -25,7 +26,7 @@ const Sidebar = ({ onLogout }: { onLogout?: () => void }) => {
   }
 
   return (
-    <aside className="fixed left-0 top-0 h-screen z-40 hidden md:flex flex-col w-72 bg-slate-50 dark:bg-slate-900 border-r border-outline-variant/10">
+    <aside className="fixed left-0 top-0 h-screen z-40 hidden md:flex flex-col w-72 bg-surface-container-low border-r border-outline-variant/10">
       <div className="p-8 flex flex-col gap-2 border-b border-outline-variant/10">
         <div className="flex items-center gap-3 mt-6">
           <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center text-on-primary font-bold text-xl">
@@ -45,8 +46,8 @@ const Sidebar = ({ onLogout }: { onLogout?: () => void }) => {
             className={({ isActive }) => cn(
               "flex items-center gap-4 px-4 py-3 rounded-lg font-body text-sm font-medium transition-all duration-200",
               isActive 
-                ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border-r-4 border-blue-700" 
-                : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:pl-6"
+                ? "bg-primary/10 text-primary border-r-4 border-primary" 
+                : "text-on-surface-variant hover:bg-surface-container-high hover:pl-6"
             )}
           >
             <item.icon size={20} />
@@ -69,25 +70,33 @@ const Sidebar = ({ onLogout }: { onLogout?: () => void }) => {
 
 const TopBar = ({ onLogout }: { onLogout?: () => void }) => {
   const user: User = JSON.parse(localStorage.getItem('ems_user') || '{}');
+  const { theme, toggleTheme } = useTheme();
 
   return (
-    <header className="w-full top-0 sticky bg-slate-50 dark:bg-slate-900 z-30 border-b border-outline-variant/10">
-      <div className="flex justify-between items-center px-6 py-4 w-full max-w-7xl mx-auto">
+    <header className="w-full top-0 sticky bg-surface-container-lowest z-30 border-b border-outline-variant/10">
+      <div className="flex justify-between items-center px-6 py-2 md:py-3 w-full max-w-7xl mx-auto">
         <div className="flex items-center gap-4">
-          <h1 className="font-headline font-bold text-xl tracking-tight text-blue-700 dark:text-blue-400">
+          <h1 className="font-headline font-bold text-xl tracking-tight text-primary">
             EMS - {user.account_name || 'Command'}
           </h1>
         </div>
         <div className="flex items-center gap-6">
           <nav className="hidden md:flex gap-8">
-            <NavLink to="/" className="text-blue-700 dark:text-blue-400 font-semibold transition-colors">Dashboard</NavLink>
-            <NavLink to="/directory" className="text-slate-500 dark:text-slate-400 hover:text-blue-700 transition-colors">Employee</NavLink>
+            <NavLink to="/" className="text-primary font-semibold transition-colors">Dashboard</NavLink>
+            <NavLink to="/directory" className="text-on-surface-variant hover:text-primary transition-colors">Employee</NavLink>
             {user.role !== 'standard' && (
-              <NavLink to="/settings" className="text-slate-500 dark:text-slate-400 hover:text-blue-700 transition-colors">Settings</NavLink>
+              <NavLink to="/settings" className="text-on-surface-variant hover:text-primary transition-colors">Settings</NavLink>
             )}
           </nav>
           <div className="flex items-center gap-2">
-            <button className="text-on-surface-variant hover:bg-slate-200/50 p-2 rounded-full transition-colors">
+            <button 
+              onClick={toggleTheme}
+              className="text-on-surface-variant hover:bg-surface-container-high p-2 rounded-full transition-colors"
+              title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+            >
+              {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
+            </button>
+            <button className="text-on-surface-variant hover:bg-surface-container-high p-2 rounded-full transition-colors">
               <Bell size={20} />
             </button>
             <button 
@@ -113,7 +122,7 @@ const BottomNav = () => {
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-3 md:hidden bg-white/70 dark:bg-slate-950/70 backdrop-blur-xl shadow-[0_-4px_20px_rgba(0,0,0,0.03)] border-t border-slate-200 dark:border-slate-800">
+    <nav className="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-3 md:hidden bg-surface-container-lowest/70 backdrop-blur-xl shadow-[0_-4px_20px_rgba(0,0,0,0.03)] border-t border-outline-variant/10">
       {navItems.map((item) => (
         <NavLink
           key={item.path}
@@ -121,8 +130,8 @@ const BottomNav = () => {
           className={({ isActive }) => cn(
             "flex flex-col items-center justify-center transition-transform duration-200 active:scale-90",
             isActive 
-              ? "bg-blue-100/50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-xl px-4 py-1" 
-              : "text-slate-500 dark:text-slate-400"
+              ? "bg-primary/10 text-primary rounded-xl px-4 py-1" 
+              : "text-on-surface-variant"
           )}
         >
           <item.icon size={20} />
@@ -149,7 +158,7 @@ export const Layout = ({ children, onLogout }: { children: React.ReactNode, onLo
       <Sidebar onLogout={onLogout} />
       <div className="md:ml-72 flex flex-col min-h-screen">
         <TopBar onLogout={onLogout} />
-        <main className="flex-1 p-6 md:p-10">
+        <main className="flex-1 p-4 md:p-8 pt-2 md:pt-4">
           {children}
         </main>
         <BottomNav />

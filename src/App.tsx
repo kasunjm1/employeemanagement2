@@ -12,6 +12,7 @@ import Login from './components/Login';
 import Settings from './components/Settings';
 import AccountManagement from './components/AccountManagement';
 import { User } from './types';
+import { ThemeProvider } from './context/ThemeContext';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -37,27 +38,31 @@ export default function App() {
 
   if (loading) return null;
 
-  if (!user) {
-    document.title = 'EMS Master - Login';
-    return <Login onLogin={handleLogin} />;
-  }
-
   return (
-    <Router>
-      <Layout onLogout={handleLogout}>
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/modules" element={<CoreModules />} />
-          <Route path="/directory" element={<Directory />} />
-          <Route path="/directory/:id" element={<EmployeeProfile />} />
-          <Route path="/attendance" element={<AttendanceLogging />} />
-          <Route path="/leave" element={<LeaveManagement />} />
-          <Route path="/payroll" element={<PayrollManagement />} />
-          <Route path="/settings" element={user.role === 'standard' ? <Navigate to="/" replace /> : <Settings />} />
-          <Route path="/accounts" element={user.role === 'super_admin' ? <AccountManagement /> : <Navigate to="/" replace />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Layout>
-    </Router>
+    <ThemeProvider>
+      {!user ? (
+        <>
+          {(() => { document.title = 'EMS Master - Login'; return null; })()}
+          <Login onLogin={handleLogin} />
+        </>
+      ) : (
+        <Router>
+          <Layout onLogout={handleLogout}>
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/modules" element={<CoreModules />} />
+              <Route path="/directory" element={<Directory />} />
+              <Route path="/directory/:id" element={<EmployeeProfile />} />
+              <Route path="/attendance" element={<AttendanceLogging />} />
+              <Route path="/leave" element={<LeaveManagement />} />
+              <Route path="/payroll" element={<PayrollManagement />} />
+              <Route path="/settings" element={user.role === 'standard' ? <Navigate to="/" replace /> : <Settings />} />
+              <Route path="/accounts" element={user.role === 'super_admin' ? <AccountManagement /> : <Navigate to="/" replace />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Layout>
+        </Router>
+      )}
+    </ThemeProvider>
   );
 }

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { Lock, Mail, ChevronRight, ShieldCheck } from 'lucide-react';
+import { Lock, Mail, ChevronRight, ShieldCheck, Moon, Sun } from 'lucide-react';
+import { useTheme } from '../context/ThemeContext';
 
 interface LoginProps {
   onLogin: (user: any) => void;
@@ -11,6 +12,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const { theme, toggleTheme } = useTheme();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,11 +41,21 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+    <div className="min-h-screen bg-surface flex items-center justify-center p-6 transition-colors duration-500">
+      <div className="absolute top-6 right-6">
+        <button 
+          onClick={toggleTheme}
+          className="text-on-surface-variant hover:bg-surface-container-high p-3 rounded-full transition-all shadow-sm bg-surface-container-lowest border border-outline-variant/10"
+          title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+        >
+          {theme === 'light' ? <Moon size={24} /> : <Sun size={24} />}
+        </button>
+      </div>
+
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="max-w-md w-full bg-white rounded-[2.5rem] shadow-2xl shadow-blue-900/5 overflow-hidden border border-outline-variant/10"
+        className="max-w-md w-full bg-surface-container-lowest rounded-[2.5rem] shadow-2xl shadow-primary/5 overflow-hidden border border-outline-variant/10"
       >
         <div className="p-10 md:p-12">
           <div className="flex flex-col items-center mb-10">
@@ -63,7 +75,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                   type="email" 
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-surface-container-lowest border border-outline-variant/20 rounded-2xl py-4 pl-12 pr-4 font-body text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                  className="w-full bg-surface-container-low border border-outline-variant/20 rounded-2xl py-4 pl-12 pr-4 font-body text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all text-on-surface"
                   placeholder="alex.sterling@nexus.com"
                   required
                 />
@@ -78,7 +90,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                   type="password" 
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-surface-container-lowest border border-outline-variant/20 rounded-2xl py-4 pl-12 pr-4 font-body text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                  className="w-full bg-surface-container-low border border-outline-variant/20 rounded-2xl py-4 pl-12 pr-4 font-body text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all text-on-surface"
                   placeholder="••••••••"
                   required
                 />

@@ -97,6 +97,8 @@ export interface DashboardStats {
 
 export interface AppSettings {
   half_day_threshold: string;
+  default_check_in: string;
+  default_check_out: string;
 }
 
 export interface PayrollAdvance {

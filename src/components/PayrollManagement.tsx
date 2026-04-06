@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Filter, DollarSign, CreditCard, History, User, ChevronRight, X, ArrowUpRight, ArrowDownLeft, Wallet, Calendar, LayoutGrid, List, Briefcase } from 'lucide-react';
+import { Search, Filter, DollarSign, CreditCard, History, User, ChevronRight, X, ArrowUpRight, ArrowDownLeft, Wallet, Calendar, LayoutGrid, List, Briefcase, Download, FileText } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Employee, Role, Section, PayrollAdvance, PayrollLoan, Project } from '@/src/types';
 import { cn } from '@/src/lib/utils';
 import { fetchWithAuth } from '@/src/lib/api';
+import { exportToExcel, exportToPDF } from '@/src/lib/reportUtils';
 
 const PayrollManagement = () => {
   const [employees, setEmployees] = useState<any[]>([]);
@@ -20,7 +21,6 @@ const PayrollManagement = () => {
   const [selectedEmployee, setSelectedEmployee] = useState<any | null>(null);
   const [advanceAmount, setAdvanceAmount] = useState('');
   const [loanAmount, setLoanAmount] = useState('');
-  const [repaymentPeriod, setRepaymentPeriod] = useState('1');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<'employees' | 'advances' | 'loans'>('employees');
   const [advances, setAdvances] = useState<PayrollAdvance[]>([]);
@@ -49,7 +49,7 @@ const PayrollManagement = () => {
   };
 
   const fetchLoans = () => {
-    fetchWithAuth('/api/payroll/loans')
+    fetchWithAuth(`/api/payroll/loans?month=${selectedMonth}&year=${selectedYear}`)
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) setLoans(data);
@@ -83,13 +83,13 @@ const PayrollManagement = () => {
   useEffect(() => {
     fetchPayrollSummary();
     fetchAdvances();
+    fetchLoans();
   }, [selectedMonth, selectedYear]);
 
   useEffect(() => {
     fetchRoles();
     fetchSections();
     fetchProjects();
-    fetchLoans();
   }, []);
 
   const fetchEmployeeHistory = async (empId: number) => {
@@ -149,14 +149,7 @@ const PayrollManagement = () => {
     if (!selectedEmployee || !loanAmount) return;
 
     const amount = parseFloat(loanAmount);
-    if (amount > 5000) {
-      alert('Maximum loan amount is 5,000');
-      return;
-    }
-
-    const period = parseInt(repaymentPeriod);
-    const monthlyInstallment = amount / period;
-
+    
     setIsSubmitting(true);
     try {
       const res = await fetchWithAuth('/api/payroll/loans', {
@@ -164,16 +157,13 @@ const PayrollManagement = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           employee_id: selectedEmployee.id,
-          amount,
-          repayment_period: period,
-          monthly_installment: monthlyInstallment
+          amount
         })
       });
 
       if (res.ok) {
         setShowLoanModal(false);
         setLoanAmount('');
-        setRepaymentPeriod('1');
         fetchPayrollSummary();
         fetchLoans();
       }
@@ -196,10 +186,6 @@ const PayrollManagement = () => {
     return baseSalary + allowance;
   };
 
-  const totalSalaries = employees.reduce((acc, emp) => acc + calculateActualSalary(emp), 0);
-  const totalAdvances = advances.reduce((acc, adv) => acc + Number(adv.amount), 0);
-  const totalLoans = loans.reduce((acc, loan) => acc + Number(loan.amount), 0);
-
   const filteredEmployees = employees.filter(e => {
     const matchesSearch = e.name.toLowerCase().includes(search.toLowerCase()) || 
       (e.employee_number && e.employee_number.toLowerCase().includes(search.toLowerCase()));
@@ -210,6 +196,56 @@ const PayrollManagement = () => {
     return matchesSearch && matchesRole && matchesProject;
   });
 
+  const handleExportExcel = async () => {
+    const monthName = new Date(0, selectedMonth - 1).toLocaleString('default', { month: 'long' });
+    const columns = [
+      { header: 'Profile', dataKey: 'avatar_url', isImage: true },
+      { header: 'Employee ID', dataKey: 'employee_number' },
+      { header: 'Name', dataKey: 'name' },
+      { header: 'Salary Type', dataKey: 'salary_type' },
+      { header: 'Present Days', dataKey: 'present_days' },
+      { header: 'Half Days', dataKey: 'half_days' },
+      { header: 'Allowance', dataKey: 'total_allowance' },
+      { header: 'Gross Salary', dataKey: 'gross' },
+      { header: 'Advances', dataKey: 'total_advances' },
+      { header: 'Loans', dataKey: 'total_loan_installments' },
+      { header: 'Net Payable', dataKey: 'net' }
+    ];
+    const data = filteredEmployees.map(emp => ({
+      ...emp,
+      gross: calculateActualSalary(emp),
+      net: calculateActualSalary(emp) - Number(emp.total_advances) - Number(emp.total_loan_installments)
+    }));
+    await exportToExcel(data, columns, `Payroll_Report_${monthName}_${selectedYear}`);
+  };
+
+  const handleExportPDF = async () => {
+    const monthName = new Date(0, selectedMonth - 1).toLocaleString('default', { month: 'long' });
+    const columns = [
+      { header: '', dataKey: 'avatar_url', isImage: true },
+      { header: 'ID', dataKey: 'employee_number' },
+      { header: 'Name', dataKey: 'name' },
+      { header: 'Type', dataKey: 'salary_type' },
+      { header: 'Days', dataKey: 'attendance' },
+      { header: 'Gross', dataKey: 'gross' },
+      { header: 'Deductions', dataKey: 'deductions' },
+      { header: 'Net', dataKey: 'net' }
+    ];
+    const data = filteredEmployees.map(emp => ({
+      ...emp,
+      attendance: `${emp.present_days}P, ${emp.half_days}H`,
+      gross: calculateActualSalary(emp).toLocaleString(),
+      deductions: (Number(emp.total_advances) + Number(emp.total_loan_installments)).toLocaleString(),
+      net: (calculateActualSalary(emp) - Number(emp.total_advances) - Number(emp.total_loan_installments)).toLocaleString()
+    }));
+    await exportToPDF(data, columns, `Payroll Report - ${monthName} ${selectedYear}`, `Payroll_Report_${monthName}_${selectedYear}`);
+  };
+
+  const totalSalaries = filteredEmployees.reduce((acc, emp) => acc + calculateActualSalary(emp), 0);
+  const totalAdvances = filteredEmployees.reduce((acc, emp) => acc + Number(emp.total_advances), 0);
+  const totalLoans = filteredEmployees.reduce((acc, emp) => acc + Number(emp.total_loan_installments), 0);
+  const totalPayableLimit = totalSalaries - totalAdvances - totalLoans;
+
   return (
     <div className="space-y-8">
       <section className="flex flex-col md:flex-row md:items-end justify-between gap-6">
@@ -218,86 +254,51 @@ const PayrollManagement = () => {
           <h2 className="text-4xl font-extrabold font-headline tracking-tight text-on-surface">Payroll</h2>
           <p className="text-on-surface-variant max-w-md font-body leading-relaxed">Manage employee salaries, advances, and loans.</p>
         </div>
-        <div className="flex gap-2">
-          <select 
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-            className="bg-surface-container-low border-none rounded-xl px-4 py-2 text-sm font-bold text-on-surface focus:ring-2 focus:ring-primary transition-all"
-          >
-            {Array.from({ length: 12 }, (_, i) => (
-              <option key={i + 1} value={i + 1}>
-                {new Date(0, i).toLocaleString('default', { month: 'long' })}
-              </option>
-            ))}
-          </select>
-          <select 
-            value={selectedYear}
-            onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-            className="bg-surface-container-low border-none rounded-xl px-4 py-2 text-sm font-bold text-on-surface focus:ring-2 focus:ring-primary transition-all"
-          >
-            {Array.from({ length: 5 }, (_, i) => {
-              const year = new Date().getFullYear() - 2 + i;
-              return <option key={year} value={year}>{year}</option>;
-            })}
-          </select>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center bg-surface-container-low rounded-xl p-1 border border-outline-variant/10">
+            <button 
+              onClick={handleExportExcel}
+              className="p-2 hover:bg-surface-container-high rounded-lg text-on-surface-variant transition-all flex items-center gap-2 text-xs font-bold"
+              title="Export Excel"
+            >
+              <Download size={16} />
+              Excel
+            </button>
+            <div className="w-px h-4 bg-outline-variant/20 mx-1" />
+            <button 
+              onClick={handleExportPDF}
+              className="p-2 hover:bg-surface-container-high rounded-lg text-on-surface-variant transition-all flex items-center gap-2 text-xs font-bold"
+              title="Export PDF"
+            >
+              <FileText size={16} />
+              PDF
+            </button>
+          </div>
+          <div className="flex gap-2">
+            <select 
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
+              className="bg-surface-container-low border-none rounded-xl px-4 py-2 text-sm font-bold text-on-surface focus:ring-2 focus:ring-primary transition-all"
+            >
+              {Array.from({ length: 12 }, (_, i) => (
+                <option key={i + 1} value={i + 1}>
+                  {new Date(0, i).toLocaleString('default', { month: 'long' })}
+                </option>
+              ))}
+            </select>
+            <select 
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+              className="bg-surface-container-low border-none rounded-xl px-4 py-2 text-sm font-bold text-on-surface focus:ring-2 focus:ring-primary transition-all"
+            >
+              {Array.from({ length: 5 }, (_, i) => {
+                const year = new Date().getFullYear() - 2 + i;
+                return <option key={year} value={year}>{year}</option>;
+              })}
+            </select>
+          </div>
         </div>
       </section>
-
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-primary/5 p-6 rounded-3xl border border-primary/10"
-        >
-          <div className="flex items-center gap-4 mb-4">
-            <div className="p-3 bg-primary/10 rounded-2xl text-primary">
-              <Wallet size={24} />
-            </div>
-            <span className="font-bold text-sm text-on-surface-variant uppercase tracking-wider">Total Salaries</span>
-          </div>
-          <div className="text-3xl font-extrabold text-on-surface">
-            Rs. {totalSalaries.toLocaleString()}
-          </div>
-          <p className="text-xs text-on-surface-variant mt-2 font-medium">For {new Date(0, selectedMonth - 1).toLocaleString('default', { month: 'long' })} {selectedYear}</p>
-        </motion.div>
-
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="bg-error/5 p-6 rounded-3xl border border-error/10"
-        >
-          <div className="flex items-center gap-4 mb-4">
-            <div className="p-3 bg-error/10 rounded-2xl text-error">
-              <ArrowUpRight size={24} />
-            </div>
-            <span className="font-bold text-sm text-on-surface-variant uppercase tracking-wider">Total Advances</span>
-          </div>
-          <div className="text-3xl font-extrabold text-on-surface">
-            Rs. {totalAdvances.toLocaleString()}
-          </div>
-          <p className="text-xs text-on-surface-variant mt-2 font-medium">Monthly total for selected period</p>
-        </motion.div>
-
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="bg-secondary/5 p-6 rounded-3xl border border-secondary/10"
-        >
-          <div className="flex items-center gap-4 mb-4">
-            <div className="p-3 bg-secondary/10 rounded-2xl text-secondary">
-              <DollarSign size={24} />
-            </div>
-            <span className="font-bold text-sm text-on-surface-variant uppercase tracking-wider">Total Loans</span>
-          </div>
-          <div className="text-3xl font-extrabold text-on-surface">
-            Rs. {totalLoans.toLocaleString()}
-          </div>
-          <p className="text-xs text-on-surface-variant mt-2 font-medium">Total outstanding/active loans</p>
-        </motion.div>
-      </div>
 
       <div className="flex gap-4 border-b border-outline-variant/10">
         <button 
@@ -500,6 +501,20 @@ const PayrollManagement = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-outline-variant/10">
+                  <tr className="bg-primary/10 font-bold">
+                    <td className="px-6 py-4 text-xs uppercase tracking-wider text-primary">Totals</td>
+                    <td className="px-6 py-4">
+                      <div className="text-sm text-primary">Rs. {totalSalaries.toLocaleString()}</div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="text-sm text-error">Rs. {(totalAdvances + totalLoans).toLocaleString()}</div>
+                      <div className="text-[10px] text-on-surface-variant uppercase">Adv: {totalAdvances.toLocaleString()} | Loan: {totalLoans.toLocaleString()}</div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="text-sm text-primary">Rs. {totalPayableLimit.toLocaleString()}</div>
+                    </td>
+                    <td className="px-6 py-4"></td>
+                  </tr>
                   {filteredEmployees.map(emp => (
                     <tr key={emp.id} className="hover:bg-surface-container-low/30 transition-colors">
                       <td className="px-6 py-4">
@@ -613,9 +628,7 @@ const PayrollManagement = () => {
             <thead>
               <tr className="bg-surface-container-low">
                 <th className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">Employee</th>
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">Total Amount</th>
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">Period</th>
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">Monthly</th>
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">Amount</th>
                 <th className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">Status</th>
               </tr>
             </thead>
@@ -626,9 +639,7 @@ const PayrollManagement = () => {
                     <div className="font-bold text-on-surface">{loan.name}</div>
                     <div className="text-xs text-on-surface-variant">{loan.employee_number}</div>
                   </td>
-                  <td className="px-6 py-4 font-bold text-on-surface">Rs. {loan.amount.toLocaleString()}</td>
-                  <td className="px-6 py-4 text-sm text-on-surface">{loan.repayment_period} Months</td>
-                  <td className="px-6 py-4 font-bold text-error">Rs. {loan.monthly_installment.toLocaleString()}</td>
+                  <td className="px-6 py-4 font-bold text-error">Rs. {loan.amount.toLocaleString()}</td>
                   <td className="px-6 py-4">
                     <span className="px-2 py-1 bg-green-100 text-green-700 text-[10px] font-bold rounded-md uppercase tracking-wider">{loan.status}</span>
                   </td>
@@ -636,7 +647,7 @@ const PayrollManagement = () => {
               ))}
               {loans.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-on-surface-variant italic">No loan records found.</td>
+                  <td colSpan={3} className="px-6 py-12 text-center text-on-surface-variant italic">No loan records found.</td>
                 </tr>
               )}
             </tbody>
@@ -647,65 +658,53 @@ const PayrollManagement = () => {
       {/* Advance Modal */}
       <AnimatePresence>
         {showAdvanceModal && selectedEmployee && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
             <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowAdvanceModal(false)}
-              className="absolute inset-0 bg-on-surface/40 backdrop-blur-sm"
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-md bg-white rounded-[2.5rem] shadow-2xl overflow-hidden"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative w-full max-w-md bg-surface-container-lowest rounded-3xl shadow-2xl border border-outline-variant/10 p-6"
             >
-              <div className="p-8 border-b border-outline-variant/10 flex items-center justify-between">
-                <h3 className="font-headline font-bold text-2xl text-on-surface">Salary Advance</h3>
-                <button onClick={() => setShowAdvanceModal(false)} className="p-2 hover:bg-surface-container rounded-full transition-colors">
-                  <X size={24} />
-                </button>
-              </div>
-
-              <form onSubmit={handleAdvanceSubmit} className="p-8 space-y-6">
-                <div className="flex items-center gap-4 p-4 bg-surface-container-low rounded-2xl">
-                  <div className="w-12 h-12 rounded-full overflow-hidden">
-                    <img src={selectedEmployee.avatar_url || `https://picsum.photos/seed/${selectedEmployee.id}/200/200`} alt="" className="w-full h-full object-cover" />
+              <h3 className="font-headline font-bold text-xl text-on-surface mb-5">Salary Advance</h3>
+              
+              <form onSubmit={handleAdvanceSubmit} className="space-y-4">
+                <div className="flex items-center gap-3 p-3 bg-surface-container-low rounded-2xl border border-outline-variant/5">
+                  <div className="w-10 h-10 rounded-full overflow-hidden">
+                    <img src={selectedEmployee.avatar_url || `https://picsum.photos/seed/${selectedEmployee.id}/200/200`} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                   </div>
                   <div>
-                    <div className="font-bold text-on-surface">{selectedEmployee.name}</div>
-                    <div className="text-xs text-on-surface-variant">Payable Limit: Rs. {(selectedEmployee.salary - selectedEmployee.total_advances - selectedEmployee.total_loan_installments).toLocaleString()}</div>
+                    <div className="font-bold text-sm text-on-surface">{selectedEmployee.name}</div>
+                    <div className="text-[10px] text-on-surface-variant font-bold uppercase">Limit: Rs. {(selectedEmployee.salary - selectedEmployee.total_advances - selectedEmployee.total_loan_installments).toLocaleString()}</div>
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="font-body text-xs font-bold text-on-surface-variant uppercase tracking-widest px-1">Advance Amount (Rs.)</label>
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest px-1">Amount (Rs.)</label>
                   <input 
                     type="number" 
                     required
                     autoFocus
                     value={advanceAmount}
                     onChange={(e) => setAdvanceAmount(e.target.value)}
-                    className="w-full bg-surface-container-low border-none rounded-xl py-4 px-4 font-headline text-2xl font-bold text-primary focus:ring-2 focus:ring-primary transition-all"
+                    className="w-full bg-surface-container-low border-none rounded-xl py-3 px-4 text-sm font-bold text-on-surface focus:ring-2 focus:ring-primary transition-all"
                     placeholder="0.00"
                   />
                 </div>
 
-                <div className="flex gap-4 pt-4">
+                <div className="flex gap-3 pt-2">
                   <button 
                     type="button"
                     onClick={() => setShowAdvanceModal(false)}
-                    className="flex-1 py-4 rounded-xl font-body font-bold text-on-surface-variant hover:bg-surface-container transition-all"
+                    className="flex-1 py-2.5 bg-surface-container-high text-on-surface font-bold rounded-xl text-sm transition-all"
                   >
                     Cancel
                   </button>
                   <button 
                     type="submit"
                     disabled={isSubmitting || !advanceAmount}
-                    className="flex-1 bg-primary text-on-primary py-4 rounded-xl font-body font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all active:scale-95 disabled:opacity-50"
+                    className="flex-1 bg-primary text-on-primary py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all disabled:opacity-50"
                   >
-                    {isSubmitting ? 'Processing...' : 'Confirm Advance'}
+                    {isSubmitting ? 'Processing...' : 'Confirm'}
                   </button>
                 </div>
               </form>
@@ -717,92 +716,53 @@ const PayrollManagement = () => {
       {/* Loan Modal */}
       <AnimatePresence>
         {showLoanModal && selectedEmployee && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
             <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowLoanModal(false)}
-              className="absolute inset-0 bg-on-surface/40 backdrop-blur-sm"
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-md bg-white rounded-[2.5rem] shadow-2xl overflow-hidden"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative w-full max-w-md bg-surface-container-lowest rounded-3xl shadow-2xl border border-outline-variant/10 p-6"
             >
-              <div className="p-8 border-b border-outline-variant/10 flex items-center justify-between">
-                <h3 className="font-headline font-bold text-2xl text-on-surface">Request Loan</h3>
-                <button onClick={() => setShowLoanModal(false)} className="p-2 hover:bg-surface-container rounded-full transition-colors">
-                  <X size={24} />
-                </button>
-              </div>
-
-              <form onSubmit={handleLoanSubmit} className="p-8 space-y-6">
-                <div className="flex items-center gap-4 p-4 bg-surface-container-low rounded-2xl">
-                  <div className="w-12 h-12 rounded-full overflow-hidden">
-                    <img src={selectedEmployee.avatar_url || `https://picsum.photos/seed/${selectedEmployee.id}/200/200`} alt="" className="w-full h-full object-cover" />
+              <h3 className="font-headline font-bold text-xl text-on-surface mb-5">Apply for Loan</h3>
+              
+              <form onSubmit={handleLoanSubmit} className="space-y-4">
+                <div className="flex items-center gap-3 p-3 bg-surface-container-low rounded-2xl border border-outline-variant/5">
+                  <div className="w-10 h-10 rounded-full overflow-hidden">
+                    <img src={selectedEmployee.avatar_url || `https://picsum.photos/seed/${selectedEmployee.id}/200/200`} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                   </div>
                   <div>
-                    <div className="font-bold text-on-surface">{selectedEmployee.name}</div>
-                    <div className="text-xs text-on-surface-variant">Max Loan: Rs. 5,000</div>
+                    <div className="font-bold text-sm text-on-surface">{selectedEmployee.name}</div>
+                    <div className="text-[10px] text-on-surface-variant font-bold uppercase">Employee Loan</div>
                   </div>
                 </div>
 
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="font-body text-xs font-bold text-on-surface-variant uppercase tracking-widest px-1">Loan Amount (Rs.)</label>
-                    <input 
-                      type="number" 
-                      required
-                      max="5000"
-                      value={loanAmount}
-                      onChange={(e) => setLoanAmount(e.target.value)}
-                      className="w-full bg-surface-container-low border-none rounded-xl py-4 px-4 font-headline text-2xl font-bold text-secondary focus:ring-2 focus:ring-secondary transition-all"
-                      placeholder="0.00"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="font-body text-xs font-bold text-on-surface-variant uppercase tracking-widest px-1">Repayment Period (Months)</label>
-                    <select 
-                      value={repaymentPeriod}
-                      onChange={(e) => setRepaymentPeriod(e.target.value)}
-                      className="w-full bg-surface-container-low border-none rounded-xl py-3 px-4 font-body text-sm focus:ring-2 focus:ring-secondary transition-all"
-                    >
-                      <option value="1">1 Month</option>
-                      <option value="2">2 Months</option>
-                      <option value="3">3 Months</option>
-                      <option value="4">4 Months</option>
-                      <option value="5">5 Months</option>
-                      <option value="6">6 Months</option>
-                    </select>
-                  </div>
-
-                  {loanAmount && (
-                    <div className="p-4 bg-secondary/5 rounded-xl border border-secondary/10">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-on-surface-variant font-medium">Monthly Installment</span>
-                        <span className="font-bold text-secondary">Rs. {(parseFloat(loanAmount) / parseInt(repaymentPeriod)).toLocaleString()}</span>
-                      </div>
-                    </div>
-                  )}
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest px-1">Total Amount (Rs.)</label>
+                  <input 
+                    type="number" 
+                    required
+                    autoFocus
+                    value={loanAmount}
+                    onChange={(e) => setLoanAmount(e.target.value)}
+                    className="w-full bg-surface-container-low border-none rounded-xl py-3 px-4 text-sm font-bold text-on-surface focus:ring-2 focus:ring-secondary transition-all"
+                    placeholder="0.00"
+                  />
                 </div>
 
-                <div className="flex gap-4 pt-4">
+                <div className="flex gap-3 pt-2">
                   <button 
                     type="button"
                     onClick={() => setShowLoanModal(false)}
-                    className="flex-1 py-4 rounded-xl font-body font-bold text-on-surface-variant hover:bg-surface-container transition-all"
+                    className="flex-1 py-2.5 bg-surface-container-high text-on-surface font-bold rounded-xl text-sm transition-all"
                   >
                     Cancel
                   </button>
                   <button 
                     type="submit"
                     disabled={isSubmitting || !loanAmount}
-                    className="flex-1 bg-secondary text-on-secondary py-4 rounded-xl font-body font-bold shadow-lg shadow-secondary/20 hover:bg-secondary/90 transition-all active:scale-95 disabled:opacity-50"
+                    className="flex-1 bg-secondary text-on-secondary py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-secondary/20 hover:bg-secondary/90 transition-all disabled:opacity-50"
                   >
-                    {isSubmitting ? 'Processing...' : 'Request Loan'}
+                    {isSubmitting ? 'Processing...' : 'Apply'}
                   </button>
                 </div>
               </form>
@@ -812,58 +772,51 @@ const PayrollManagement = () => {
       </AnimatePresence>
       <AnimatePresence>
         {showHistoryModal && selectedEmployee && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
             <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowHistoryModal(false)}
-              className="absolute inset-0 bg-on-surface/40 backdrop-blur-sm"
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-2xl bg-white rounded-[2.5rem] shadow-2xl overflow-hidden"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative w-full max-w-2xl bg-surface-container-lowest rounded-[2rem] shadow-2xl overflow-hidden border border-outline-variant/10"
             >
-              <div className="p-8 border-b border-outline-variant/10 flex items-center justify-between">
+              <div className="p-6 border-b border-outline-variant/10 flex items-center justify-between">
                 <div>
-                  <h3 className="font-headline font-bold text-2xl text-on-surface">Payment History</h3>
-                  <p className="text-sm text-on-surface-variant">{selectedEmployee.name} ({selectedEmployee.employee_number})</p>
+                  <h3 className="font-headline font-bold text-xl text-on-surface">Payment History</h3>
+                  <p className="text-xs text-on-surface-variant font-medium">{selectedEmployee.name} ({selectedEmployee.employee_number})</p>
                 </div>
                 <button onClick={() => setShowHistoryModal(false)} className="p-2 hover:bg-surface-container rounded-full transition-colors">
-                  <X size={24} />
+                  <X size={20} className="text-on-surface-variant" />
                 </button>
               </div>
 
-              <div className="p-8 max-h-[60vh] overflow-y-auto space-y-8">
+              <div className="p-6 max-h-[60vh] overflow-y-auto space-y-6">
                 <section>
-                  <h4 className="font-bold text-sm uppercase tracking-widest text-primary mb-4 flex items-center gap-2">
-                    <ArrowUpRight size={16} />
+                  <h4 className="font-bold text-[10px] uppercase tracking-widest text-primary mb-3 flex items-center gap-2">
+                    <ArrowUpRight size={14} />
                     Advances History
                   </h4>
-                  <div className="bg-surface-container-low rounded-2xl overflow-hidden">
-                    <table className="w-full text-left text-sm">
+                  <div className="bg-surface-container-low rounded-xl overflow-hidden border border-outline-variant/5">
+                    <table className="w-full text-left text-xs">
                       <thead>
                         <tr className="bg-surface-container border-b border-outline-variant/10">
-                          <th className="px-4 py-3 font-bold">Date</th>
-                          <th className="px-4 py-3 font-bold text-right">Amount</th>
-                          <th className="px-4 py-3 font-bold">Status</th>
+                          <th className="px-4 py-2.5 font-bold text-on-surface-variant uppercase text-[9px]">Date</th>
+                          <th className="px-4 py-2.5 font-bold text-right text-on-surface-variant uppercase text-[9px]">Amount</th>
+                          <th className="px-4 py-2.5 font-bold text-on-surface-variant uppercase text-[9px]">Status</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-outline-variant/10">
                         {employeeHistory.advances.map(adv => (
                           <tr key={adv.id}>
-                            <td className="px-4 py-3">{new Date(adv.date).toLocaleDateString()}</td>
-                            <td className="px-4 py-3 text-right font-bold text-error">Rs. {adv.amount.toLocaleString()}</td>
-                            <td className="px-4 py-3">
-                              <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-bold rounded-md uppercase tracking-wider">{adv.status}</span>
+                            <td className="px-4 py-2.5 text-on-surface">{new Date(adv.date).toLocaleDateString()}</td>
+                            <td className="px-4 py-2.5 text-right font-bold text-error">Rs. {adv.amount.toLocaleString()}</td>
+                            <td className="px-4 py-2.5">
+                              <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 text-[8px] font-bold rounded uppercase tracking-wider">{adv.status}</span>
                             </td>
                           </tr>
                         ))}
                         {employeeHistory.advances.length === 0 && (
                           <tr>
-                            <td colSpan={3} className="px-4 py-8 text-center text-on-surface-variant italic">No advance history.</td>
+                            <td colSpan={3} className="px-4 py-6 text-center text-on-surface-variant italic">No advance history.</td>
                           </tr>
                         )}
                       </tbody>
@@ -872,34 +825,32 @@ const PayrollManagement = () => {
                 </section>
 
                 <section>
-                  <h4 className="font-bold text-sm uppercase tracking-widest text-secondary mb-4 flex items-center gap-2">
-                    <DollarSign size={16} />
+                  <h4 className="font-bold text-[10px] uppercase tracking-widest text-secondary mb-3 flex items-center gap-2">
+                    <DollarSign size={14} />
                     Loans History
                   </h4>
-                  <div className="bg-surface-container-low rounded-2xl overflow-hidden">
-                    <table className="w-full text-left text-sm">
+                  <div className="bg-surface-container-low rounded-xl overflow-hidden border border-outline-variant/5">
+                    <table className="w-full text-left text-xs">
                       <thead>
                         <tr className="bg-surface-container border-b border-outline-variant/10">
-                          <th className="px-4 py-3 font-bold">Date</th>
-                          <th className="px-4 py-3 font-bold text-right">Total</th>
-                          <th className="px-4 py-3 font-bold text-right">Monthly</th>
-                          <th className="px-4 py-3 font-bold">Status</th>
+                          <th className="px-4 py-2.5 font-bold text-on-surface-variant uppercase text-[9px]">Date</th>
+                          <th className="px-4 py-2.5 font-bold text-right text-on-surface-variant uppercase text-[9px]">Amount</th>
+                          <th className="px-4 py-2.5 font-bold text-on-surface-variant uppercase text-[9px]">Status</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-outline-variant/10">
                         {employeeHistory.loans.map(loan => (
                           <tr key={loan.id}>
-                            <td className="px-4 py-3">{new Date(loan.date).toLocaleDateString()}</td>
-                            <td className="px-4 py-3 text-right font-bold">Rs. {loan.amount.toLocaleString()}</td>
-                            <td className="px-4 py-3 text-right font-bold text-error">Rs. {loan.monthly_installment.toLocaleString()}</td>
-                            <td className="px-4 py-3">
-                              <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-bold rounded-md uppercase tracking-wider">{loan.status}</span>
+                            <td className="px-4 py-2.5 text-on-surface">{new Date(loan.date).toLocaleDateString()}</td>
+                            <td className="px-4 py-2.5 text-right font-bold text-error">Rs. {loan.amount.toLocaleString()}</td>
+                            <td className="px-4 py-2.5">
+                              <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 text-[8px] font-bold rounded uppercase tracking-wider">{loan.status}</span>
                             </td>
                           </tr>
                         ))}
                         {employeeHistory.loans.length === 0 && (
                           <tr>
-                            <td colSpan={4} className="px-4 py-8 text-center text-on-surface-variant italic">No loan history.</td>
+                            <td colSpan={3} className="px-4 py-6 text-center text-on-surface-variant italic">No loan history.</td>
                           </tr>
                         )}
                       </tbody>
@@ -908,10 +859,10 @@ const PayrollManagement = () => {
                 </section>
               </div>
 
-              <div className="p-8 bg-surface-container-low border-t border-outline-variant/10">
+              <div className="p-6 bg-surface-container-low border-t border-outline-variant/10">
                 <button 
                   onClick={() => setShowHistoryModal(false)}
-                  className="w-full py-4 bg-on-surface text-surface rounded-xl font-bold hover:opacity-90 transition-all"
+                  className="w-full py-3 bg-on-surface text-surface rounded-xl font-bold text-sm hover:opacity-90 transition-all"
                 >
                   Close History
                 </button>

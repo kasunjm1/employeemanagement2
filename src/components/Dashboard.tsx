@@ -70,7 +70,7 @@ const Dashboard = () => {
             <div className="p-2 bg-primary/10 rounded-lg text-primary">
               <CheckCircle size={24} />
             </div>
-            <span className="text-[10px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full uppercase">Present</span>
+            <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/30 px-2 py-0.5 rounded-full uppercase">Present</span>
           </div>
           <div>
             <h3 className="font-headline text-3xl font-bold text-on-surface">{stats?.activeToday?.toLocaleString() || '0'}</h3>
@@ -88,7 +88,7 @@ const Dashboard = () => {
             <div className="p-2 bg-error/10 rounded-lg text-error">
               <XCircle size={24} />
             </div>
-            <span className="text-[10px] font-bold text-error bg-error/5 px-2 py-0.5 rounded-full uppercase">Absent</span>
+            <span className="text-[10px] font-bold text-error bg-error/10 dark:bg-error/20 px-2 py-0.5 rounded-full uppercase">Absent</span>
           </div>
           <div>
             <h3 className="font-headline text-3xl font-bold text-on-surface">{stats?.absentToday?.toLocaleString() || '0'}</h3>

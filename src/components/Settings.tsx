@@ -38,6 +38,8 @@ const Settings = () => {
   const [accounts, setAccounts] = useState<{id: number, name: string}[]>([]);
   const [appSettings, setAppSettings] = useState({
     half_day_threshold: '10:00',
+    default_check_in: '08:00',
+    default_check_out: '17:00',
     max_loan_per_employee: '5000',
     total_loan_per_month: '50000'
   });
@@ -738,6 +740,33 @@ const Settings = () => {
                         onChange={(e) => handleUpdateSetting('half_day_threshold', e.target.value)}
                         className="bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                       />
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-sm font-bold text-on-surface">Default Bulk In-out Times</label>
+                      <p className="text-xs text-on-surface-variant">Standard check-in and check-out times for bulk attendance entries.</p>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] font-bold text-on-surface-variant uppercase">In</span>
+                        <input 
+                          type="time"
+                          value={appSettings.default_check_in}
+                          onChange={(e) => handleUpdateSetting('default_check_in', e.target.value)}
+                          className="bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] font-bold text-on-surface-variant uppercase">Out</span>
+                        <input 
+                          type="time"
+                          value={appSettings.default_check_out}
+                          onChange={(e) => handleUpdateSetting('default_check_out', e.target.value)}
+                          className="bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                        />
+                      </div>
                     </div>
                   </div>
 

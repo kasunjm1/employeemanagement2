@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Filter, UserPlus, ChevronRight, X, Camera, Upload, Plus, Edit, FileText, Image as ImageIcon } from 'lucide-react';
+import { Search, Filter, UserPlus, ChevronRight, X, Camera, Upload, Plus, Edit, FileText, Image as ImageIcon, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Employee, Role, Section } from '@/src/types';
 import { cn } from '@/src/lib/utils';
 import { fetchWithAuth } from '@/src/lib/api';
+import { exportToExcel, exportToPDF } from '@/src/lib/reportUtils';
 
 const Directory = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -223,6 +224,47 @@ const Directory = () => {
     return matchesSearch && matchesRole && matchesSection;
   });
 
+  const handleExportExcel = async () => {
+    const columns = [
+      { header: 'Profile', dataKey: 'avatar_url', isImage: true },
+      { header: 'Employee ID', dataKey: 'employee_id' },
+      { header: 'Name', dataKey: 'name' },
+      { header: 'Nickname', dataKey: 'nickname' },
+      { header: 'Role', dataKey: 'role' },
+      { header: 'Section', dataKey: 'section' },
+      { header: 'Join Date', dataKey: 'join_date' },
+      { header: 'Mobile', dataKey: 'mobile' },
+      { header: 'NIC', dataKey: 'nic' },
+      { header: 'Status', dataKey: 'status' }
+    ];
+    const data = filtered.map(emp => ({
+      ...emp,
+      join_date: new Date(emp.join_date).toLocaleDateString(),
+      role: emp.role || 'N/A',
+      section: emp.section || 'N/A'
+    }));
+    await exportToExcel(data, columns, 'Employee_Directory');
+  };
+
+  const handleExportPDF = async () => {
+    const columns = [
+      { header: '', dataKey: 'avatar_url', isImage: true },
+      { header: 'ID', dataKey: 'employee_id' },
+      { header: 'Name', dataKey: 'name' },
+      { header: 'Role', dataKey: 'role' },
+      { header: 'Section', dataKey: 'section' },
+      { header: 'Join Date', dataKey: 'join_date' },
+      { header: 'Status', dataKey: 'status' }
+    ];
+    const data = filtered.map(emp => ({
+      ...emp,
+      join_date: new Date(emp.join_date).toLocaleDateString(),
+      role: emp.role || 'N/A',
+      section: emp.section || 'N/A'
+    }));
+    await exportToPDF(data, columns, 'Employee Directory Report', 'Employee_Directory');
+  };
+
   return (
     <div className="space-y-8">
       <section className="flex flex-col md:flex-row md:items-end justify-between gap-6">
@@ -231,17 +273,38 @@ const Directory = () => {
           <h2 className="text-4xl font-extrabold font-headline tracking-tight text-on-surface">Employee</h2>
           <p className="text-on-surface-variant max-w-md font-body leading-relaxed">Manage and view all personnel across the organization.</p>
         </div>
-        <button 
-          onClick={() => {
-            setModalMode('add');
-            setNewEmployee(initialEmployeeState);
-            setShowAddModal(true);
-          }}
-          className="bg-gradient-to-br from-primary to-primary-container text-on-primary px-6 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg active:scale-95 transition-all"
-        >
-          <UserPlus size={20} />
-          Add Employee
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center bg-surface-container-low rounded-xl p-1 border border-outline-variant/10">
+            <button 
+              onClick={handleExportExcel}
+              className="p-2 hover:bg-surface-container-high rounded-lg text-on-surface-variant transition-all flex items-center gap-2 text-xs font-bold"
+              title="Export Excel"
+            >
+              <Download size={16} />
+              Excel
+            </button>
+            <div className="w-px h-4 bg-outline-variant/20 mx-1" />
+            <button 
+              onClick={handleExportPDF}
+              className="p-2 hover:bg-surface-container-high rounded-lg text-on-surface-variant transition-all flex items-center gap-2 text-xs font-bold"
+              title="Export PDF"
+            >
+              <FileText size={16} />
+              PDF
+            </button>
+          </div>
+          <button 
+            onClick={() => {
+              setModalMode('add');
+              setNewEmployee(initialEmployeeState);
+              setShowAddModal(true);
+            }}
+            className="bg-gradient-to-br from-primary to-primary-container text-on-primary px-6 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg active:scale-95 transition-all"
+          >
+            <UserPlus size={20} />
+            Add Employee
+          </button>
+        </div>
       </section>
 
       <div className="bg-surface-container-lowest rounded-2xl p-4 shadow-sm border border-outline-variant/10 flex flex-col lg:flex-row gap-4">
@@ -294,7 +357,7 @@ const Directory = () => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.05 }}
           >
-            <div className="group bg-surface-container-lowest p-6 rounded-2xl border border-outline-variant/10 hover:shadow-xl hover:shadow-slate-200/50 transition-all block relative">
+            <div className="group bg-surface-container-lowest p-6 rounded-2xl border border-outline-variant/10 hover:shadow-xl hover:shadow-primary/10 dark:hover:shadow-black/50 transition-all block relative">
               <button 
                 onClick={(e) => {
                   e.preventDefault();
@@ -314,7 +377,7 @@ const Directory = () => {
                       <span className="px-2 py-0.5 bg-primary/10 text-primary text-[10px] font-bold rounded-md uppercase tracking-wider">{emp.employee_id}</span>
                       <span className={cn(
                         "px-2 py-0.5 text-[10px] font-bold rounded-md uppercase tracking-wider",
-                        emp.status === 'On-Duty' ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"
+                        emp.status === 'On-Duty' ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
                       )}>{emp.status}</span>
                     </div>
                     <h3 className="font-headline font-bold text-lg text-on-surface truncate group-hover:text-primary transition-colors">{emp.name}</h3>
@@ -351,7 +414,7 @@ const Directory = () => {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-2xl bg-white rounded-[2.5rem] shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
+              className="relative w-full max-w-2xl bg-surface-container-lowest rounded-[2.5rem] shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
             >
               <div className="p-8 border-b border-outline-variant/10 flex items-center justify-between shrink-0">
                 <h3 className="font-headline font-bold text-2xl text-on-surface">
