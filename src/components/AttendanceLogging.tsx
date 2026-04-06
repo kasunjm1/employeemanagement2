@@ -348,11 +348,10 @@ const AttendanceLogging = () => {
   };
 
   return (
-    <div className="max-w-7xl mx-auto space-y-4">
+    <div className="max-w-7xl mx-auto space-y-2">
       <section className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div className="space-y-1">
-          <h2 className="text-3xl font-extrabold font-headline tracking-tight text-on-surface">Attendance Management</h2>
-          <p className="text-on-surface-variant text-sm font-body">Manage daily attendance records via manual entry or fingerprint scan.</p>
+          <h2 className="text-2xl font-extrabold font-headline tracking-tight text-on-surface">Attendance Management</h2>
         </div>
         <div className="flex items-center gap-3">
           <button 
@@ -380,14 +379,14 @@ const AttendanceLogging = () => {
       </div>
     </section>
 
-      <div className="grid grid-cols-1 gap-6">
+      <div className="grid grid-cols-1 gap-3">
         {/* Compact Entry Form */}
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-surface-container-lowest rounded-3xl p-6 shadow-sm border border-outline-variant"
+          className="bg-surface-container-lowest rounded-3xl p-4 shadow-sm border border-outline-variant"
         >
-          <div className="flex flex-col lg:flex-row gap-6 items-start">
+          <div className="flex flex-col lg:flex-row gap-4 items-start">
             {/* Employee Selection & Search */}
             <div className="w-full lg:w-1/3 flex items-center gap-4">
               <div className="w-16 h-16 rounded-2xl overflow-hidden border-2 border-primary/10 flex-shrink-0 bg-surface-container-high">
@@ -581,7 +580,7 @@ const AttendanceLogging = () => {
 
         {/* Attendance Summary Table */}
         <div className="bg-surface-container-lowest rounded-3xl shadow-sm border border-outline-variant overflow-hidden">
-          <div className="p-6 border-b border-outline-variant flex items-center justify-between bg-surface-container-low">
+          <div className="p-4 border-b border-outline-variant flex items-center justify-between bg-surface-container-low">
             <div className="flex items-center gap-3">
               <RefreshCw 
                 size={18} 
@@ -632,26 +631,26 @@ const AttendanceLogging = () => {
             <table className="w-full text-left border-collapse">
               <thead className="sticky top-0 z-10 bg-surface-container-low shadow-sm">
                 <tr className="border-b border-outline-variant">
-                  <th className="px-6 py-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider bg-surface-container-low">Employee</th>
-                  <th className="px-6 py-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider bg-surface-container-low">ID</th>
-                  <th className="px-6 py-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider bg-surface-container-low">Project</th>
-                  <th className="px-6 py-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider bg-surface-container-low">In Time</th>
-                  <th className="px-6 py-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider bg-surface-container-low">Out Time</th>
-                  <th className="px-6 py-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider bg-surface-container-low">Status</th>
-                  <th className="px-6 py-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider bg-surface-container-low">Action</th>
+                  <th className="px-4 py-2 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider bg-surface-container-low">Employee</th>
+                  <th className="px-4 py-2 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider bg-surface-container-low">ID</th>
+                  <th className="px-4 py-2 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider bg-surface-container-low">Project</th>
+                  <th className="px-4 py-2 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider bg-surface-container-low">In Time</th>
+                  <th className="px-4 py-2 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider bg-surface-container-low">Out Time</th>
+                  <th className="px-4 py-2 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider bg-surface-container-low">Status</th>
+                  <th className="px-4 py-2 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider bg-surface-container-low">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant">
                 {historyLogs.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-12 text-center text-on-surface-variant text-sm font-medium">
+                    <td colSpan={7} className="px-4 py-6 text-center text-on-surface-variant text-sm font-medium">
                       No records found for this date.
                     </td>
                   </tr>
                 ) : (
                   historyLogs.map((log) => (
                     <tr key={log.id} className="hover:bg-surface-container-low transition-colors group">
-                      <td className="px-6 py-4">
+                      <td className="px-4 py-2">
                         <Link to={`/directory/${log.employee_id}`} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
                           <img 
                             src={log.avatar_url || `https://picsum.photos/seed/${log.employee_id}/200/200`} 
@@ -662,15 +661,15 @@ const AttendanceLogging = () => {
                           <span className="text-sm font-bold text-on-surface">{log.name}</span>
                         </Link>
                       </td>
-                      <td className="px-6 py-4 text-xs font-medium text-on-surface-variant">{log.employee_number}</td>
-                      <td className="px-6 py-4 text-xs font-medium text-on-surface-variant">{log.project || 'N/A'}</td>
-                      <td className="px-6 py-4">
+                      <td className="px-4 py-2 text-xs font-medium text-on-surface-variant">{log.employee_number}</td>
+                      <td className="px-4 py-2 text-xs font-medium text-on-surface-variant">{log.project || 'N/A'}</td>
+                      <td className="px-4 py-2">
                         <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600">
                           <LogIn size={12} />
                           {formatTime(log.check_in)}
                         </span>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-4 py-2">
                         {log.check_out ? (
                           <span className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-600">
                             <LogOut size={12} />
@@ -680,7 +679,7 @@ const AttendanceLogging = () => {
                           <span className="text-[10px] font-bold text-outline uppercase tracking-tighter italic">Pending</span>
                         )}
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-4 py-2">
                         <div className="flex flex-col gap-1">
                           <span className={cn(
                             "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-widest w-fit",
@@ -698,7 +697,7 @@ const AttendanceLogging = () => {
                           </span>
                         </div>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-4 py-2">
                         <div className="flex items-center gap-2">
                           <button 
                             onClick={() => {
@@ -752,37 +751,37 @@ const AttendanceLogging = () => {
               </button>
             </div>
             
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="flex-1 overflow-y-auto p-4">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-outline-variant">
-                    <th className="pb-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Date</th>
-                    <th className="pb-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Project</th>
-                    <th className="pb-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">In Time</th>
-                    <th className="pb-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Out Time</th>
-                    <th className="pb-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Allowance</th>
-                    <th className="pb-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Status</th>
+                    <th className="pb-2 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Date</th>
+                    <th className="pb-2 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Project</th>
+                    <th className="pb-2 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">In Time</th>
+                    <th className="pb-2 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Out Time</th>
+                    <th className="pb-2 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Allowance</th>
+                    <th className="pb-2 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-outline-variant">
                   {employeeHistory.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-8 text-center text-on-surface-variant text-sm">No history records found.</td>
+                      <td colSpan={6} className="py-4 text-center text-on-surface-variant text-sm">No history records found.</td>
                     </tr>
                   ) : (
                     employeeHistory.map((log) => (
                       <tr key={log.id} className="hover:bg-surface-container-low transition-colors">
-                        <td className="py-4 text-sm font-bold text-on-surface">
+                        <td className="py-2 text-sm font-bold text-on-surface">
                           {new Date(log.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
                         </td>
-                        <td className="py-4 text-xs font-medium text-on-surface-variant">{log.project || 'N/A'}</td>
-                        <td className="py-4">
+                        <td className="py-2 text-xs font-medium text-on-surface-variant">{log.project || 'N/A'}</td>
+                        <td className="py-2">
                           <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600">
                             <LogIn size={12} />
                             {formatTime(log.check_in)}
                           </span>
                         </td>
-                        <td className="py-4">
+                        <td className="py-2">
                           {log.check_out ? (
                             <span className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-600">
                               <LogOut size={12} />
@@ -792,7 +791,7 @@ const AttendanceLogging = () => {
                             <span className="text-[10px] font-bold text-outline uppercase tracking-tighter italic">Pending</span>
                           )}
                         </td>
-                        <td className="py-4">
+                        <td className="py-2">
                           {log.allowance > 0 ? (
                             <span className="text-xs font-bold text-primary">
                               LKR {Number(log.allowance).toLocaleString()}
@@ -801,7 +800,7 @@ const AttendanceLogging = () => {
                             <span className="text-xs text-outline">-</span>
                           )}
                         </td>
-                        <td className="py-4">
+                        <td className="py-2">
                           <span className={cn(
                             "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-widest w-fit",
                             log.status === 'Half-Day' ? "bg-amber-100 text-amber-700" : 

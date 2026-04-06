@@ -249,10 +249,9 @@ const PayrollManagement = () => {
   return (
     <div className="space-y-8">
       <section className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-        <div className="space-y-2">
+        <div className="space-y-1">
           <span className="font-body text-[11px] font-semibold tracking-widest uppercase text-on-surface-variant">Finance</span>
-          <h2 className="text-4xl font-extrabold font-headline tracking-tight text-on-surface">Payroll</h2>
-          <p className="text-on-surface-variant max-w-md font-body leading-relaxed">Manage employee salaries, advances, and loans.</p>
+          <h2 className="text-2xl font-extrabold font-headline tracking-tight text-on-surface">Payroll</h2>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center bg-surface-container-low rounded-xl p-1 border border-outline-variant/10">
