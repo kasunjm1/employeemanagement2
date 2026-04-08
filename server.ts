@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 import { query } from "./src/lib/db.js";
 
@@ -1876,13 +1877,22 @@ export async function setupApp() {
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
-    // The catch-all route should only be added if we are NOT in a serverless environment
-    // or if we want the function to handle the SPA routing (which is usually handled by vercel.json)
-    if (process.env.VERCEL !== "1") {
-      app.get("*", (req, res) => {
-        res.sendFile(path.join(distPath, "index.html"));
-      });
-    }
+    
+    // Catch-all route for SPA fallback
+    app.get("*", (req, res) => {
+      const indexPath = path.join(distPath, "index.html");
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        // Fallback to root index.html if dist/index.html is missing (e.g. during some build phases)
+        const rootIndexPath = path.join(process.cwd(), "index.html");
+        if (fs.existsSync(rootIndexPath)) {
+          res.sendFile(rootIndexPath);
+        } else {
+          res.status(404).send("Not Found");
+        }
+      }
+    });
   }
 }
 
