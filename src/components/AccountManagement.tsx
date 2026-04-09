@@ -11,8 +11,6 @@ const AccountManagement = () => {
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [duplicating, setDuplicating] = useState(false);
-  const [duplicationStatus, setDuplicationStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
 
   const user = JSON.parse(localStorage.getItem('ems_user') || '{}');
 
@@ -106,16 +104,6 @@ const AccountManagement = () => {
 
   return (
     <div className="max-w-6xl mx-auto space-y-10 p-6 relative">
-      {duplicating && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
-          <div className="bg-white p-8 rounded-2xl shadow-2xl text-center space-y-4">
-            <div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin mx-auto" />
-            <h2 className="text-xl font-headline font-bold">Duplicating Data...</h2>
-            <p className="text-gray-500 font-body">This may take a few moments. Please do not close this tab.</p>
-          </div>
-        </div>
-      )}
-
       {/* Debug Info */}
       <div className="text-[10px] text-gray-400 font-mono mb-4">
         User: {user.email} | Role: {user.role} | Account: {user.account_id}
@@ -143,58 +131,6 @@ const AccountManagement = () => {
             />
           </div>
           <button 
-            disabled={duplicating}
-            onClick={async () => {
-              console.log('Duplication button clicked');
-              if (user.role !== 'super_admin') {
-                alert('You must be a super_admin to perform this action. Your current role is: ' + user.role);
-                return;
-              }
-              const confirmed = window.confirm ? window.confirm("Duplicate all data from 'Mahamevnawa Galnewa' to 'Test'?") : true;
-              if (!confirmed) {
-                console.log('Duplication cancelled by user');
-                return;
-              }
-              setDuplicating(true);
-              setDuplicationStatus(null);
-              console.log('Starting duplication request...');
-              try {
-                const res = await fetch('/api/admin/duplicate-account-data', {
-                  method: 'POST',
-                  headers: getHeaders()
-                });
-                console.log('Duplication response received:', res.status);
-                const data = await res.json();
-                if (res.ok) {
-                  setDuplicationStatus({ type: 'success', message: data.message });
-                  fetchAccounts();
-                } else {
-                  console.error('Duplication failed:', data);
-                  setDuplicationStatus({ type: 'error', message: data.error + (data.details ? ': ' + data.details : '') });
-                }
-              } catch (err) {
-                console.error('Duplication network error:', err);
-                setDuplicationStatus({ type: 'error', message: 'Failed to trigger duplication' });
-              } finally {
-                setDuplicating(false);
-              }
-            }}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm transition-all shadow-lg active:scale-95 ${
-              duplicating 
-                ? 'bg-amber-400 text-white cursor-not-allowed' 
-                : 'bg-amber-600 text-white hover:bg-amber-700 shadow-amber-200'
-            }`}
-          >
-            {duplicating ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                Duplicating...
-              </>
-            ) : (
-              <>Duplicate Galnewa to Test</>
-            )}
-          </button>
-          <button 
             onClick={() => setShowCreateModal(true)}
             className="flex items-center gap-2 px-6 py-2.5 bg-primary text-on-primary rounded-xl font-bold text-sm hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 active:scale-95"
           >
@@ -207,15 +143,6 @@ const AccountManagement = () => {
       {error && (
         <div className="p-4 bg-error/10 text-error rounded-xl font-body text-sm font-bold">
           {error}
-        </div>
-      )}
-
-      {duplicationStatus && (
-        <div className={`p-4 rounded-xl font-body text-sm font-bold flex items-center justify-between ${
-          duplicationStatus.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'
-        }`}>
-          <span>{duplicationStatus.message}</span>
-          <button onClick={() => setDuplicationStatus(null)} className="text-xs underline">Dismiss</button>
         </div>
       )}
 

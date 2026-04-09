@@ -100,11 +100,13 @@ const ExpenseManagement: React.FC = () => {
     fetchExpenses();
   }, [selectedMonth, selectedYear]);
 
-  const totalPaid = expenses.reduce((sum, e) => sum + e.paid_expenses, 0);
-  const totalPending = expenses.reduce((sum, e) => sum + e.pending_expenses, 0);
+  const filteredExpenses = expenses.filter(e => e.total_expenses > 0);
+
+  const totalPaid = filteredExpenses.reduce((sum, e) => sum + e.paid_expenses, 0);
+  const totalPending = filteredExpenses.reduce((sum, e) => sum + e.pending_expenses, 0);
   const totalOverall = totalPaid + totalPending;
 
-  const chartData = expenses.map(e => ({
+  const chartData = filteredExpenses.map(e => ({
     name: e.project_name,
     Paid: e.paid_expenses,
     Pending: e.pending_expenses
@@ -220,7 +222,7 @@ const ExpenseManagement: React.FC = () => {
         <div className="flex items-center justify-center h-64">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
         </div>
-      ) : expenses.length === 0 ? (
+      ) : filteredExpenses.length === 0 ? (
         <div className="bg-surface-container-lowest p-12 rounded-2xl border border-outline-variant text-center">
           <p className="text-on-surface-variant">No expense data found for the selected period.</p>
         </div>
@@ -317,13 +319,13 @@ const ExpenseManagement: React.FC = () => {
               <thead>
                 <tr className="bg-surface-container text-on-surface-variant text-sm uppercase tracking-wider">
                   <th className="px-6 py-4 font-semibold">Project Name</th>
+                  <th className="px-6 py-4 font-semibold text-right">Total Expense</th>
                   <th className="px-6 py-4 font-semibold text-right">Paid (Advances)</th>
                   <th className="px-6 py-4 font-semibold text-right">Pending (Earned)</th>
-                  <th className="px-6 py-4 font-semibold text-right">Total Expense</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant">
-                {expenses.map((e) => (
+                {filteredExpenses.map((e) => (
                   <tr key={e.project_id} className="hover:bg-surface-container-low transition-colors">
                     <td className="px-6 py-4 font-medium">
                       <button 
@@ -333,14 +335,14 @@ const ExpenseManagement: React.FC = () => {
                         {e.project_name}
                       </button>
                     </td>
+                    <td className="px-6 py-4 text-right font-bold">
+                      Rs. {e.total_expenses.toLocaleString()}
+                    </td>
                     <td className="px-6 py-4 text-right text-emerald-600 font-semibold">
                       Rs. {e.paid_expenses.toLocaleString()}
                     </td>
                     <td className="px-6 py-4 text-right text-amber-600 font-semibold">
                       Rs. {e.pending_expenses.toLocaleString()}
-                    </td>
-                    <td className="px-6 py-4 text-right font-bold">
-                      Rs. {e.total_expenses.toLocaleString()}
                     </td>
                   </tr>
                 ))}
@@ -348,9 +350,9 @@ const ExpenseManagement: React.FC = () => {
               <tfoot>
                 <tr className="bg-surface-container/50 font-bold">
                   <td className="px-6 py-4">Total</td>
+                  <td className="px-6 py-4 text-right">Rs. {totalOverall.toLocaleString()}</td>
                   <td className="px-6 py-4 text-right text-emerald-600">Rs. {totalPaid.toLocaleString()}</td>
                   <td className="px-6 py-4 text-right text-amber-600">Rs. {totalPending.toLocaleString()}</td>
-                  <td className="px-6 py-4 text-right">Rs. {totalOverall.toLocaleString()}</td>
                 </tr>
               </tfoot>
             </table>
