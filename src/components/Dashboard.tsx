@@ -4,7 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Cell } from 'recharts
 import { motion, AnimatePresence } from 'motion/react';
 import { Link } from 'react-router-dom';
 import { DashboardStats, Alert, Leave, ProjectAttendanceSummary, ProjectEmployeeAttendance } from '@/src/types';
-import { cn, formatDate } from '@/src/lib/utils';
+import { cn } from '@/src/lib/utils';
 import { fetchWithAuth } from '@/src/lib/api';
 
 const Dashboard = () => {
@@ -99,7 +99,7 @@ const Dashboard = () => {
               <div className="flex items-center gap-2 px-3 py-1.5 bg-surface-container-high rounded-full border border-outline-variant/10">
                 <Calendar size={14} className="text-on-surface-variant" />
                 <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">
-                  {formatDate(new Date())}
+                  {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </span>
               </div>
             </div>
@@ -255,7 +255,7 @@ const Dashboard = () => {
               <div className="p-6 border-b border-outline-variant/10 flex items-center justify-between bg-surface-container-low">
                 <div>
                   <h3 className="font-headline text-xl font-bold text-on-surface">{selectedProject.name}</h3>
-                  <p className="text-xs text-on-surface-variant">Daily Attendance List • {formatDate(new Date())}</p>
+                  <p className="text-xs text-on-surface-variant">Daily Attendance List • {new Date().toLocaleDateString()}</p>
                 </div>
                 <button 
                   onClick={() => setSelectedProject(null)}

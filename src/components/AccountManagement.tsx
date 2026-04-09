@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Building2, Calendar, ChevronRight, Search, Edit2, Trash2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Account } from '@/src/types';
-import { formatDate } from '@/src/lib/utils';
 
 const AccountManagement = () => {
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -337,7 +336,7 @@ const AccountManagement = () => {
             
             <div className="flex items-center gap-2 text-xs text-on-surface-variant mb-6">
               <Calendar size={14} />
-              <span>Created {formatDate(account.created_at)}</span>
+              <span>Created {new Date(account.created_at).toLocaleDateString()}</span>
             </div>
 
             <button className="w-full flex items-center justify-between p-3 bg-surface-container-low rounded-xl text-sm font-bold text-on-surface hover:bg-surface-container-high transition-colors">

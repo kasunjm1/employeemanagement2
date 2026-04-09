@@ -3,10 +3,9 @@ import { Link } from 'react-router-dom';
 import { Search, Filter, UserPlus, ChevronRight, X, Camera, Upload, Plus, Edit, FileText, Image as ImageIcon, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Employee, Role, Section } from '@/src/types';
-import { cn, formatDate } from '@/src/lib/utils';
+import { cn } from '@/src/lib/utils';
 import { fetchWithAuth } from '@/src/lib/api';
 import { exportToExcel, exportToPDF } from '@/src/lib/reportUtils';
-import { CustomDatePicker } from '@/src/components/ui/CustomDatePicker';
 
 const Directory = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -197,7 +196,7 @@ const Directory = () => {
       name: emp.name,
       nickname: emp.nickname || '',
       role_id: emp.role_id || 0,
-      join_date: formatDate(emp.join_date),
+      join_date: new Date(emp.join_date).toISOString().split('T')[0],
       employee_id: emp.employee_id,
       mobile: emp.mobile || '',
       whatsapp: emp.whatsapp || '',
@@ -242,7 +241,7 @@ const Directory = () => {
     ];
     const data = filtered.map(emp => ({
       ...emp,
-      join_date: formatDate(emp.join_date),
+      join_date: new Date(emp.join_date).toLocaleDateString(),
       role: emp.role || 'N/A',
       section: emp.section || 'N/A'
     }));
@@ -261,7 +260,7 @@ const Directory = () => {
     ];
     const data = filtered.map(emp => ({
       ...emp,
-      join_date: formatDate(emp.join_date),
+      join_date: new Date(emp.join_date).toLocaleDateString(),
       role: emp.role || 'N/A',
       section: emp.section || 'N/A'
     }));
@@ -519,10 +518,12 @@ const Directory = () => {
                   </div>
                   <div className="space-y-2">
                     <label className="font-body text-xs font-bold text-on-surface-variant uppercase tracking-widest px-1">Join Date</label>
-                    <CustomDatePicker 
-                      value={newEmployee.join_date}
-                      onChange={(val) => setNewEmployee({ ...newEmployee, join_date: val })}
+                    <input 
+                      type="date" 
                       required
+                      value={newEmployee.join_date}
+                      onChange={(e) => setNewEmployee({ ...newEmployee, join_date: e.target.value })}
+                      className="w-full bg-surface-container-low border-none rounded-xl py-3 px-4 font-body text-sm focus:ring-2 focus:ring-primary transition-all"
                     />
                   </div>
                   <div className="space-y-2">
@@ -554,11 +555,25 @@ const Directory = () => {
                     >
                       <option value="Monthly">Monthly</option>
                       <option value="Daily">Daily</option>
+                      <option value="Per-unit">Per-unit</option>
                     </select>
                   </div>
+                  {newEmployee.salary_type === 'Per-unit' && (
+                    <div className="space-y-2">
+                      <label className="font-body text-xs font-bold text-on-surface-variant uppercase tracking-widest px-1">Unit Description</label>
+                      <input 
+                        type="text" 
+                        required
+                        value={newEmployee.unit_description}
+                        onChange={(e) => setNewEmployee({ ...newEmployee, unit_description: e.target.value })}
+                        className="w-full bg-surface-container-low border-none rounded-xl py-3 px-4 font-body text-sm focus:ring-2 focus:ring-primary transition-all"
+                        placeholder="e.g. per 1000 bricks, per delivery"
+                      />
+                    </div>
+                  )}
                   <div className="space-y-2">
                     <label className="font-body text-xs font-bold text-on-surface-variant uppercase tracking-widest px-1">
-                      Salary Amount
+                      {newEmployee.salary_type === 'Per-unit' ? 'Rate per Unit' : 'Salary Amount'}
                     </label>
                     <input 
                       type="number" 

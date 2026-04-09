@@ -1,34 +1,14 @@
+import 'dotenv/config';
 import express from "express";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
-import { initDb } from "./src/lib/initDb.js";
-export { initDb };
 import { query } from "./src/lib/db.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-console.log('Server.ts module loading...');
-
-// Lazy Database Initialization Middleware
-let dbInitialized = false;
-app.use(async (req, res, next) => {
-  if (!dbInitialized && req.path.startsWith('/api') && req.path !== '/api/health') {
-    try {
-      console.log('Vercel/Server: Lazy initializing database...');
-      await initDb();
-      dbInitialized = true;
-      console.log('Vercel/Server: Database initialized successfully');
-    } catch (err) {
-      console.error('Vercel/Server: Database initialization failed:', err);
-      // We don't block the request here, let the route handler fail if it needs the DB
-    }
-  }
-  next();
-});
-
 const PORT = 3000;
 
 app.use(express.json({ limit: '50mb' }));
@@ -38,6 +18,394 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok", env: process.env.NODE_ENV, vercel: process.env.VERCEL });
 });
+
+// Database Initialization
+export async function initDb() {
+  if (!process.env.DATABASE_URL) {
+    throw new Error("DATABASE_URL environment variable is missing. Please set it in Vercel project settings.");
+  }
+  try {
+    console.log('Initializing database tables...');
+    
+    // Combine all table creation into a single query to reduce round trips
+    await query(`
+      CREATE TABLE IF NOT EXISTS e_accounts (
+        id SERIAL PRIMARY KEY,
+        name TEXT UNIQUE NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        deleted_at TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS e_users (
+        id SERIAL PRIMARY KEY,
+        account_id INTEGER REFERENCES e_accounts(id) ON DELETE CASCADE,
+        email TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        name TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'standard',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        deleted_at TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS e_roles (
+        id SERIAL PRIMARY KEY,
+        account_id INTEGER REFERENCES e_accounts(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        deleted_at TIMESTAMP,
+        UNIQUE(account_id, name)
+      );
+
+      CREATE TABLE IF NOT EXISTS e_sections (
+        id SERIAL PRIMARY KEY,
+        account_id INTEGER REFERENCES e_accounts(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        deleted_at TIMESTAMP,
+        UNIQUE(account_id, name)
+      );
+
+      CREATE TABLE IF NOT EXISTS e_projects (
+        id SERIAL PRIMARY KEY,
+        account_id INTEGER REFERENCES e_accounts(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        deleted_at TIMESTAMP,
+        UNIQUE(account_id, name)
+      );
+
+      CREATE TABLE IF NOT EXISTS e_employees (
+        id SERIAL PRIMARY KEY,
+        account_id INTEGER REFERENCES e_accounts(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        nickname TEXT,
+        role_id INTEGER REFERENCES e_roles(id),
+        join_date DATE NOT NULL,
+        employee_id TEXT NOT NULL,
+        status TEXT DEFAULT 'On-Duty',
+        mobile TEXT,
+        whatsapp TEXT,
+        nic TEXT,
+        tax_residency TEXT,
+        section_id INTEGER REFERENCES e_sections(id),
+        salary_type TEXT,
+        unit_description TEXT,
+        avatar_url TEXT,
+        deleted_at TIMESTAMP,
+        UNIQUE(account_id, employee_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS e_employee_details (
+        id SERIAL PRIMARY KEY,
+        account_id INTEGER REFERENCES e_accounts(id) ON DELETE CASCADE,
+        employee_id INTEGER REFERENCES e_employees(id) ON DELETE CASCADE,
+        title TEXT,
+        content TEXT,
+        image_data TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        deleted_at TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS e_attendance (
+        id SERIAL PRIMARY KEY,
+        account_id INTEGER REFERENCES e_accounts(id) ON DELETE CASCADE,
+        employee_id INTEGER REFERENCES e_employees(id) ON DELETE CASCADE,
+        date DATE NOT NULL,
+        check_in TIME,
+        check_out TIME,
+        status TEXT,
+        section_id INTEGER REFERENCES e_sections(id),
+        project_id INTEGER REFERENCES e_projects(id),
+        allowance DECIMAL(10, 2) DEFAULT 0,
+        units DECIMAL(10, 2) DEFAULT 0,
+        deleted_at TIMESTAMP
+      );
+
+      DO $$ 
+      BEGIN 
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='e_attendance' AND column_name='allowance') THEN
+          ALTER TABLE e_attendance ADD COLUMN allowance DECIMAL(10, 2) DEFAULT 0;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='e_attendance' AND column_name='units') THEN
+          ALTER TABLE e_attendance ADD COLUMN units DECIMAL(10, 2) DEFAULT 0;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='e_attendance' AND column_name='salary_per_unit') THEN
+          ALTER TABLE e_attendance ADD COLUMN salary_per_unit DECIMAL(10, 2) DEFAULT 0;
+        END IF;
+      END $$;
+
+      CREATE TABLE IF NOT EXISTS e_leaves (
+        id SERIAL PRIMARY KEY,
+        account_id INTEGER REFERENCES e_accounts(id) ON DELETE CASCADE,
+        employee_id INTEGER REFERENCES e_employees(id) ON DELETE CASCADE,
+        type TEXT NOT NULL,
+        start_date DATE NOT NULL,
+        end_date DATE NOT NULL,
+        days INTEGER NOT NULL,
+        status TEXT DEFAULT 'Pending',
+        applied_on DATE DEFAULT CURRENT_DATE,
+        deleted_at TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS e_alerts (
+        id SERIAL PRIMARY KEY,
+        account_id INTEGER REFERENCES e_accounts(id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        description TEXT,
+        type TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        deleted_at TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS e_settings (
+        id SERIAL PRIMARY KEY,
+        account_id INTEGER REFERENCES e_accounts(id) ON DELETE CASCADE,
+        key TEXT NOT NULL,
+        value TEXT NOT NULL,
+        UNIQUE(account_id, key)
+      );
+
+      CREATE TABLE IF NOT EXISTS e_payroll_advances (
+        id SERIAL PRIMARY KEY,
+        account_id INTEGER REFERENCES e_accounts(id) ON DELETE CASCADE,
+        employee_id INTEGER REFERENCES e_employees(id) ON DELETE CASCADE,
+        amount NUMERIC NOT NULL,
+        date DATE DEFAULT CURRENT_DATE,
+        status TEXT DEFAULT 'Approved',
+        deleted_at TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS e_payroll_loans (
+        id SERIAL PRIMARY KEY,
+        account_id INTEGER REFERENCES e_accounts(id) ON DELETE CASCADE,
+        employee_id INTEGER REFERENCES e_employees(id) ON DELETE CASCADE,
+        amount NUMERIC NOT NULL,
+        repayment_period INTEGER NOT NULL,
+        monthly_installment NUMERIC NOT NULL,
+        date DATE DEFAULT CURRENT_DATE,
+        status TEXT DEFAULT 'Approved',
+        deleted_at TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS e_expenses (
+        id SERIAL PRIMARY KEY,
+        account_id INTEGER REFERENCES e_accounts(id) ON DELETE CASCADE,
+        project_id INTEGER REFERENCES e_projects(id) ON DELETE SET NULL,
+        employee_id INTEGER REFERENCES e_employees(id) ON DELETE SET NULL,
+        advance_id INTEGER REFERENCES e_payroll_advances(id) ON DELETE CASCADE,
+        category TEXT NOT NULL,
+        amount NUMERIC NOT NULL,
+        date DATE DEFAULT CURRENT_DATE,
+        description TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        deleted_at TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS e_salary_advance_breakdown (
+        id SERIAL PRIMARY KEY,
+        account_id INTEGER REFERENCES e_accounts(id) ON DELETE CASCADE,
+        advance_id INTEGER REFERENCES e_payroll_advances(id) ON DELETE CASCADE,
+        project_id INTEGER REFERENCES e_projects(id) ON DELETE CASCADE,
+        amount NUMERIC NOT NULL,
+        deleted_at TIMESTAMP
+      );
+    `);
+
+    // Migration: Add employee_id to e_expenses if it doesn't exist
+    try {
+      await query(`ALTER TABLE e_expenses ADD COLUMN IF NOT EXISTS employee_id INTEGER REFERENCES e_employees(id) ON DELETE SET NULL`);
+      await query(`ALTER TABLE e_expenses ADD COLUMN IF NOT EXISTS advance_id INTEGER REFERENCES e_payroll_advances(id) ON DELETE CASCADE`);
+    } catch (e) {
+      console.error('Migration error adding columns to e_expenses:', e);
+    }
+
+    // Migration: Refactor employee_id to use integer ID instead of employee number
+    try {
+      const tablesToMigrate = ['e_employee_details', 'e_attendance', 'e_leaves', 'e_payroll_advances', 'e_payroll_loans'];
+      for (const tableName of tablesToMigrate) {
+        // Check if employee_id is still TEXT
+        const colInfo = await query(`
+          SELECT data_type FROM information_schema.columns 
+          WHERE table_name = $1 AND column_name = 'employee_id'
+        `, [tableName]);
+        
+        if (colInfo.rows.length > 0 && colInfo.rows[0].data_type === 'text') {
+          console.log(`Migrating ${tableName}.employee_id from TEXT to INTEGER...`);
+          
+          // 1. Rename old column
+          await query(`ALTER TABLE ${tableName} RENAME COLUMN employee_id TO employee_number`);
+          
+          // 2. Add new column
+          await query(`ALTER TABLE ${tableName} ADD COLUMN employee_id INTEGER REFERENCES e_employees(id) ON DELETE CASCADE`);
+          
+          // 3. Populate new column
+          await query(`
+            UPDATE ${tableName} t
+            SET employee_id = e.id
+            FROM e_employees e
+            WHERE t.account_id = e.account_id AND t.employee_number = e.employee_id
+          `);
+          
+          // 4. Drop old column (optional, but let's keep it for now as employee_number just in case, or drop if we are sure)
+          // For now, let's keep it as employee_number.
+        }
+
+        // Ensure employee_number is nullable if it exists to avoid NOT NULL constraint errors
+        try {
+          await query(`ALTER TABLE ${tableName} ALTER COLUMN employee_number DROP NOT NULL`);
+        } catch (e) {
+          // Ignore if column doesn't exist
+        }
+      }
+    } catch (migErr) {
+      console.error('Employee ID migration error:', migErr);
+    }
+
+    // Migration: Add role_id and section_id to e_employees and e_attendance if they don't exist
+    try {
+      await query(`
+        DO $$ 
+        BEGIN 
+          BEGIN
+            ALTER TABLE e_employees ADD COLUMN IF NOT EXISTS role_id INTEGER REFERENCES e_roles(id);
+          EXCEPTION WHEN others THEN NULL; END;
+          
+          BEGIN
+            ALTER TABLE e_employees ADD COLUMN IF NOT EXISTS section_id INTEGER REFERENCES e_sections(id);
+          EXCEPTION WHEN others THEN NULL; END;
+          
+          BEGIN
+            ALTER TABLE e_attendance ADD COLUMN IF NOT EXISTS section_id INTEGER REFERENCES e_sections(id);
+          EXCEPTION WHEN others THEN NULL; END;
+          
+          BEGIN
+            ALTER TABLE e_attendance ADD COLUMN IF NOT EXISTS project_id INTEGER REFERENCES e_projects(id);
+          EXCEPTION WHEN others THEN NULL; END;
+          
+          BEGIN
+            ALTER TABLE e_employees ALTER COLUMN role DROP NOT NULL;
+          EXCEPTION WHEN others THEN NULL; END;
+          
+          BEGIN
+            ALTER TABLE e_employees ALTER COLUMN section DROP NOT NULL;
+          EXCEPTION WHEN others THEN NULL; END;
+          
+          BEGIN
+            ALTER TABLE e_employees ADD COLUMN IF NOT EXISTS salary NUMERIC DEFAULT 0;
+          EXCEPTION WHEN others THEN NULL; END;
+          
+          BEGIN
+            ALTER TABLE e_attendance ALTER COLUMN section DROP NOT NULL;
+          EXCEPTION WHEN others THEN NULL; END;
+        END $$;
+      `);
+      
+      // Fix problematic foreign key constraints if they exist
+      await query(`ALTER TABLE e_attendance DROP CONSTRAINT IF EXISTS e_attendance_employee_id_fkey`).catch(() => {});
+      
+      // Add proper composite foreign key for e_attendance to ensure data integrity
+      await query(`
+        ALTER TABLE e_attendance 
+        ADD CONSTRAINT e_attendance_employee_account_fkey 
+        FOREIGN KEY (account_id, employee_id) 
+        REFERENCES e_employees(account_id, employee_id) 
+        ON DELETE CASCADE
+      `).catch(() => {});
+
+      // Migration: Fix unique constraints for multi-account support
+      await query(`ALTER TABLE e_roles DROP CONSTRAINT IF EXISTS e_roles_name_key`).catch(() => {});
+      await query(`ALTER TABLE e_roles ADD CONSTRAINT e_roles_account_name_key UNIQUE (account_id, name)`).catch(() => {});
+      
+      await query(`ALTER TABLE e_sections DROP CONSTRAINT IF EXISTS e_sections_name_key`).catch(() => {});
+      await query(`ALTER TABLE e_sections ADD CONSTRAINT e_sections_account_name_key UNIQUE (account_id, name)`).catch(() => {});
+      
+      await query(`ALTER TABLE e_projects DROP CONSTRAINT IF EXISTS e_projects_name_key`).catch(() => {});
+      await query(`ALTER TABLE e_projects ADD CONSTRAINT e_projects_account_name_key UNIQUE (account_id, name)`).catch(() => {});
+
+      console.log('Dropping old employee_id unique constraint...');
+      await query(`ALTER TABLE e_employees DROP CONSTRAINT IF EXISTS e_employees_employee_id_key CASCADE`).catch((e) => console.log('Failed to drop constraint:', e.message));
+      await query(`DROP INDEX IF EXISTS e_employees_employee_id_key CASCADE`).catch((e) => console.log('Failed to drop index:', e.message));
+      
+      console.log('Adding composite employee_id unique constraint...');
+      await query(`
+        DO $$ 
+        BEGIN 
+          IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name='e_employees_account_employee_id_key') THEN
+            ALTER TABLE e_employees ADD CONSTRAINT e_employees_account_employee_id_key UNIQUE (account_id, employee_id);
+          END IF;
+        END $$;
+      `).catch((e) => console.log('Failed to add composite constraint:', e.message));
+
+      console.log('Migration check complete: role_id, section_id columns and unique constraints verified.');
+    } catch (migrationErr) {
+      console.error('Migration error:', migrationErr);
+    }
+
+    // Seed initial account and super admin
+    const accountCheck = await query("SELECT COUNT(*) FROM e_accounts");
+    if (parseInt(accountCheck.rows[0].count) === 0) {
+      const accountResult = await query("INSERT INTO e_accounts (name) VALUES ('Nexus Global') RETURNING id");
+      const accountId = accountResult.rows[0].id;
+
+      // Super Admin (No account_id needed for global access, but let's assign to first account for now)
+      await query(`
+        INSERT INTO e_users (email, password, name, role, account_id)
+        VALUES 
+        ('admin@nexus.com', 'admin123', 'System Administrator', 'super_admin', $1),
+        ('kasun.jm@gmail.com', 'admin@123', 'Kasun Super Admin', 'super_admin', $1)
+      `, [accountId]);
+
+      // Seed initial roles and sections for the first account
+      await query(`
+        INSERT INTO e_roles (account_id, name) VALUES ($1, 'Senior Lead'), ($1, 'Logistics Coordinator'), ($1, 'HR Specialist'), ($1, 'Production Manager'), ($1, 'Quality Control')
+      `, [accountId]);
+      await query(`
+        INSERT INTO e_sections (account_id, name) VALUES ($1, 'Operations & Logistics'), ($1, 'Logistics'), ($1, 'Human Resources'), ($1, 'Production Wing A'), ($1, 'Admin HQ')
+      `, [accountId]);
+
+      // Seed initial employees for the first account
+      await query(`
+        INSERT INTO e_employees (account_id, name, nickname, role, join_date, employee_id, mobile, whatsapp, nic, tax_residency, section, salary_type, avatar_url)
+        VALUES 
+        ($1, 'Samantha Richards', 'Sam', 'Senior Lead', '2021-10-12', 'EMP-2021-084', '+1 (555) 012-3456', '+1 (555) 012-3456', '198812345678', 'Domestic (Standard)', 'Operations & Logistics', 'Daily', 'https://lh3.googleusercontent.com/aida-public/AB6AXuDXWVldVYDyIXMhQzxdkIjCbDlN7tCrCAB0ictQww9juBGGfOYZIGlbtmGB5yrdapzk5duIGGh2-AjVIxqHdVpCYkO7YaubRFRt_Ke0msJGwuJElCpoSv0fjWuU0HGsjuJs_kraZEkNsomynMmUv76hRo_QWMDQyd5ho1eeBE1dE6ewVQ1EWXZL5VPBBtbkHP-1LjfL2cRrv02avPn9iWruhfPUys4lgrR6GbGVMs73rhPKbJpHEH0XjJC8KSaeE7qjoqY7dKd7cCk'),
+        ($1, 'David Miller', 'Dave', 'Logistics Coordinator', '2022-03-15', 'EMP-2022-012', '+1 (555) 987-6543', '+1 (555) 987-6543', '199012345678', 'Domestic (Standard)', 'Logistics', 'Daily', 'https://picsum.photos/seed/david/200/200'),
+        ($1, 'Elena Rodriguez', 'Elena', 'HR Specialist', '2023-01-10', 'EMP-2023-045', '+1 (555) 456-7890', '+1 (555) 456-7890', '199212345678', 'Domestic (Standard)', 'Human Resources', 'Daily', 'https://picsum.photos/seed/elena/200/200')
+      `, [accountId]);
+
+      await query(`
+        INSERT INTO e_attendance (account_id, employee_id, date, check_in, check_out, status, section_id)
+        SELECT account_id, id, '2023-08-24', '08:14:00', '17:32:00', 'Full-Day', section_id
+        FROM e_employees WHERE employee_id = 'EMP-2021-084' AND account_id = $1
+      `, [accountId]);
+
+      await query(`
+        INSERT INTO e_attendance (account_id, employee_id, date, check_in, check_out, status, section_id)
+        SELECT account_id, id, '2023-08-23', '08:02:00', '17:45:00', 'Full-Day', section_id
+        FROM e_employees WHERE employee_id = 'EMP-2021-084' AND account_id = $1
+      `, [accountId]);
+
+      await query(`
+        INSERT INTO e_leaves (account_id, employee_id, type, start_date, end_date, days, status, applied_on)
+        SELECT account_id, id, 'Annual Vacation', '2023-10-12', '2023-10-18', 5, 'Approved', '2023-09-28'
+        FROM e_employees WHERE employee_id = 'EMP-2021-084' AND account_id = $1
+      `, [accountId]);
+
+      await query(`
+        INSERT INTO e_leaves (account_id, employee_id, type, start_date, end_date, days, status, applied_on)
+        SELECT account_id, id, 'Medical Leave', '2023-11-05', '2023-11-05', 1, 'Pending', '2023-11-04'
+        FROM e_employees WHERE employee_id = 'EMP-2021-084' AND account_id = $1
+      `, [accountId]);
+
+      await query(`
+        INSERT INTO e_alerts (account_id, title, description, type)
+        VALUES 
+        ($1, 'Unexplained Absence: Team Beta', '4 members have not checked in by 09:30 AM', 'warning'),
+        ($1, 'Pending Approval: Sarah Jenkins', 'Request for 5 days Medical Leave', 'approval'),
+        ($1, 'Work Anniversary: Robert Chen', 'Celebrating 5 years with Master Admin today', 'celebration')
+      `, [accountId]);
+    }
+  } catch (err) {
+    console.error("Database initialization error:", err);
+    throw err; // Rethrow so the caller knows it failed
+  }
+}
 
 // Auth Middleware
 const authenticate = (req: any, res: any, next: any) => {
@@ -1493,24 +1861,6 @@ const authenticate = (req: any, res: any, next: any) => {
     }
   });
 
-// Static files and SPA fallback
-const distPath = path.join(process.cwd(), "dist");
-if (process.env.NODE_ENV === "production" || process.env.VERCEL === "1") {
-  app.use(express.static(distPath));
-}
-
-// Global Error Handler (Register early to catch middleware errors)
-const globalErrorHandler = (err: any, req: any, res: any, next: any) => {
-  console.error("Unhandled Express Error:", err);
-  if (!res.headersSent) {
-    res.status(500).json({ 
-      error: "Internal Server Error", 
-      message: err.message,
-      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
-    });
-  }
-};
-
 export async function setupApp() {
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production" && process.env.VERCEL !== "1") {
@@ -1525,56 +1875,54 @@ export async function setupApp() {
       console.error("Failed to load Vite:", e);
     }
   } else {
-    // In production, the static middleware is already registered above.
-    // We just need the catch-all route at the very end.
+    const distPath = path.join(process.cwd(), "dist");
+    app.use(express.static(distPath));
+    
+    // Catch-all route for SPA fallback
+    app.get("*", (req, res) => {
+      const indexPath = path.join(distPath, "index.html");
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        // Fallback to root index.html if dist/index.html is missing (e.g. during some build phases)
+        const rootIndexPath = path.join(process.cwd(), "index.html");
+        if (fs.existsSync(rootIndexPath)) {
+          res.sendFile(rootIndexPath);
+        } else {
+          res.status(404).send("Not Found");
+        }
+      }
+    });
   }
 }
 
-// We'll register the catch-all route AFTER all other routes are registered.
-// This will be done in the start() function or at the end of the file.
-
-// Register SPA fallback at the end
-if (process.env.NODE_ENV === "production" || process.env.VERCEL === "1") {
-  app.get("*", (req, res) => {
-    const indexPath = path.join(distPath, "index.html");
-    if (fs.existsSync(indexPath)) {
-      res.sendFile(indexPath);
-    } else {
-      const rootIndexPath = path.join(process.cwd(), "index.html");
-      if (fs.existsSync(rootIndexPath)) {
-        res.sendFile(rootIndexPath);
-      } else {
-        res.status(404).send("Not Found");
-      }
-    }
-  });
-}
-
-// Register Global Error Handler at the very end
-app.use(globalErrorHandler);
-
-// Start logic
-const start = async () => {
-  try {
-    if (process.env.VERCEL !== "1") {
-      await setupApp();
-      console.log("Starting local server...");
+if (process.env.VERCEL !== "1") {
+  const start = async () => {
+    try {
       if (process.env.DATABASE_URL) {
         await initDb();
+      } else {
+        console.warn("DATABASE_URL environment variable is missing. Database initialization skipped.");
       }
+      await setupApp();
       app.listen(PORT, "0.0.0.0", () => {
         console.log(`Server running on http://localhost:${PORT}`);
       });
+    } catch (err) {
+      console.error("Fatal server error during startup:", err);
+      // Even if database fails, we should try to start the app to pass health checks
+      // and allow the user to see error messages in logs or UI
+      try {
+        await setupApp();
+        app.listen(PORT, "0.0.0.0", () => {
+          console.log(`Server running on http://localhost:${PORT} (with startup errors)`);
+        });
+      } catch (setupErr) {
+        console.error("Failed to even setup app:", setupErr);
+        process.exit(1);
+      }
     }
-  } catch (err) {
-    console.error("Fatal server error during startup:", err);
-    if (process.env.VERCEL !== "1") {
-      process.exit(1);
-    }
-  }
-};
-
-if (process.env.VERCEL !== "1") {
+  };
   start();
 }
 

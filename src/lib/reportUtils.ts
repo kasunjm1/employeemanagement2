@@ -2,7 +2,6 @@ import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { formatDate } from './utils';
 
 // Helper to convert image URL to base64
 const getBase64ImageFromURL = (url: string): Promise<string> => {
@@ -134,7 +133,7 @@ export const exportToPDF = async (
   doc.setFontSize(10);
   doc.setTextColor(115, 118, 133); // Outline color #737685
   if (fontLoaded) doc.setFont(fontName);
-  doc.text(`Generated on: ${formatDate(new Date())} ${new Date().toLocaleTimeString()}`, 14, 30);
+  doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 30);
   
   // Prepare body data with base64 images if needed
   const body = await Promise.all(

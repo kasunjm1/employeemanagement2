@@ -3,10 +3,9 @@ import { Link } from 'react-router-dom';
 import { UserPlus, Calendar, CheckCircle2, Clock, XCircle, ChevronRight, Briefcase, LogIn, LogOut, Users, Fingerprint, RefreshCw, History, X, Download, FileText, Search, Pencil } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Employee, Attendance, Project } from '@/src/types';
-import { cn, formatTime, formatDate } from '@/src/lib/utils';
+import { cn, formatTime } from '@/src/lib/utils';
 import { fetchWithAuth } from '@/src/lib/api';
 import { exportToExcel, exportToPDF } from '@/src/lib/reportUtils';
-import { CustomDatePicker } from '@/src/components/ui/CustomDatePicker';
 
 const AttendanceLogging = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -48,7 +47,6 @@ const AttendanceLogging = () => {
   const [employeeHistory, setEmployeeHistory] = useState<Attendance[]>([]);
   const [historyEmployeeName, setHistoryEmployeeName] = useState('');
   const [alreadyAttendedIds, setAlreadyAttendedIds] = useState<number[]>([]);
-  const [dailyLogs, setDailyLogs] = useState<Attendance[]>([]);
   const [activeTab, setActiveTab] = useState<'logging' | 'history'>('logging');
   const [filterEmployeeId, setFilterEmployeeId] = useState<number>(0);
   const [filterProjectId, setFilterProjectId] = useState<number>(0);
@@ -77,7 +75,7 @@ const AttendanceLogging = () => {
       const res = await fetchWithAuth(`/api/attendance?date=${date}`);
       const data = await res.json();
       if (Array.isArray(data)) {
-        setDailyLogs(data);
+        // Use employee_id to identify who already has attendance
         setAlreadyAttendedIds(data.map((log: any) => log.employee_id));
       }
     } catch (err) {
@@ -216,28 +214,16 @@ const AttendanceLogging = () => {
     });
   };
 
-  const handleSubmit = async (e?: React.FormEvent) => {
+  const handleSubmit = async (e?: React.FormEvent, type?: 'in' | 'out') => {
     if (e) e.preventDefault();
     
     const dataToSubmit = { ...formData };
     const currentTime = getISTTime();
 
-    if (!dataToSubmit.id) {
-      if (!dataToSubmit.check_in) dataToSubmit.check_in = currentTime;
-    } else {
-      if (!dataToSubmit.check_out) dataToSubmit.check_out = currentTime;
-    }
-
-    // Auto status calculation
-    if (dataToSubmit.check_in && dataToSubmit.check_out) {
-      const [inH, inM] = dataToSubmit.check_in.split(':').map(Number);
-      const [outH, outM] = dataToSubmit.check_out.split(':').map(Number);
-      let duration = (outH + outM / 60) - (inH + inM / 60);
-      if (duration < 0) duration += 24;
-      
-      dataToSubmit.status = duration < 8 ? 'Half-Day' : 'Full-Day';
-    } else {
-      dataToSubmit.status = 'Half-Day';
+    if (type === 'in' && !dataToSubmit.check_in) {
+      dataToSubmit.check_in = currentTime;
+    } else if (type === 'out' && !dataToSubmit.check_out) {
+      dataToSubmit.check_out = currentTime;
     }
 
     try {
@@ -247,7 +233,10 @@ const AttendanceLogging = () => {
       const res = await fetchWithAuth(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(dataToSubmit)
+        body: JSON.stringify({
+          ...dataToSubmit,
+          status: dataToSubmit.status || 'Full-Day'
+        })
       });
       if (res.ok) {
         const contentType = res.headers.get('content-type');
@@ -505,11 +494,7 @@ const AttendanceLogging = () => {
   };
 
   const toggleEmployeeSelection = (id: number) => {
-    const logs = dailyLogs.filter(l => l.employee_id === id);
-    const isFullDay = logs.some(l => l.status === 'Full-Day');
-    const isDoubleHalfDay = logs.length >= 2;
-    if (isFullDay || isDoubleHalfDay) return;
-    
+    if (alreadyAttendedIds.includes(id)) return;
     setSelectedEmployees(prev => 
       prev.includes(id) ? prev.filter(empId => empId !== id) : [...prev, id]
     );
@@ -555,11 +540,12 @@ const AttendanceLogging = () => {
               <Calendar className="text-primary" size={18} />
               <div className="flex flex-col">
                 <label className="text-[8px] font-bold text-on-surface-variant uppercase tracking-tighter leading-none">Logging Date</label>
-                <CustomDatePicker 
+                <input 
+                  type="date"
                   value={formData.date}
-                  onChange={(val) => {
-                    setFormData({ ...formData, date: val });
-                    setHistoryDate(val);
+                  onChange={(e) => {
+                    setFormData({ ...formData, date: e.target.value });
+                    setHistoryDate(e.target.value);
                   }}
                   className="bg-transparent border-none text-sm font-bold text-on-surface focus:ring-0 p-0 h-5 w-32 cursor-pointer"
                 />
@@ -646,11 +632,7 @@ const AttendanceLogging = () => {
                 {showSearchResults && searchTerm && filteredEmployees.length > 0 && (
                   <div className="absolute z-20 w-full mt-2 bg-surface-container-lowest border border-outline-variant rounded-xl shadow-xl max-h-48 overflow-y-auto">
                     {filteredEmployees.map(emp => {
-                      const logs = dailyLogs.filter(l => l.employee_id === emp.id);
-                      const isFullDay = logs.some(l => l.status === 'Full-Day');
-                      const isDoubleHalfDay = logs.length >= 2;
-                      const isAlreadyAttended = isFullDay || isDoubleHalfDay;
-
+                      const isAlreadyAttended = alreadyAttendedIds.includes(emp.id);
                       return (
                         <div 
                           key={emp.id}
@@ -712,55 +694,64 @@ const AttendanceLogging = () => {
 
               <div className="space-y-1">
                 <label className="block text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">In Time (IST)</label>
-                <div className="flex gap-1">
-                  <div className="relative flex-1">
-                    <input 
-                      type="time"
-                      value={formData.check_in}
-                      onChange={(e) => setFormData({ ...formData, check_in: e.target.value })}
-                      className="w-full bg-surface-container-highest border-none rounded-xl px-3 py-3 text-sm font-medium focus:ring-2 focus:ring-primary"
-                    />
+                <div className="flex flex-col gap-2">
+                  <div className="flex gap-1">
+                    <div className="relative flex-1">
+                      <input 
+                        type="time"
+                        value={formData.check_in}
+                        onChange={(e) => setFormData({ ...formData, check_in: e.target.value })}
+                        className="w-full bg-surface-container-highest border-none rounded-xl px-3 py-3 text-sm font-medium focus:ring-2 focus:ring-primary"
+                      />
+                    </div>
+                    <button 
+                      type="button"
+                      onClick={() => setFormData({ ...formData, check_in: getISTTime() })}
+                      className="px-2 bg-surface-container-high rounded-xl text-[10px] font-bold hover:bg-primary/10 transition-colors"
+                    >
+                      Now
+                    </button>
                   </div>
                   <button 
                     type="button"
-                    onClick={() => setFormData({ ...formData, check_in: getISTTime() })}
-                    className="px-2 bg-surface-container-high rounded-xl text-[10px] font-bold hover:bg-primary/10 transition-colors"
+                    onClick={() => handleSubmit(undefined, 'in')}
+                    className="w-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 px-3 py-1.5 rounded-xl font-bold text-[10px] hover:bg-emerald-200 dark:hover:bg-emerald-900/50 transition-all flex items-center justify-center gap-1.5 border border-emerald-200 dark:border-emerald-800/30"
                   >
-                    Now
+                    <LogIn size={12} />
+                    {formData.id ? 'Update In' : 'In'}
                   </button>
                 </div>
               </div>
 
               <div className="space-y-1">
                 <label className="block text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Out Time (IST)</label>
-                <div className="flex gap-1">
-                  <div className="relative flex-1">
-                    <input 
-                      type="time"
-                      value={formData.check_out}
-                      onChange={(e) => setFormData({ ...formData, check_out: e.target.value })}
-                      className="w-full bg-surface-container-highest border-none rounded-xl px-3 py-3 text-sm font-medium focus:ring-2 focus:ring-primary"
-                    />
+                <div className="flex flex-col gap-2">
+                  <div className="flex gap-1">
+                    <div className="relative flex-1">
+                      <input 
+                        type="time"
+                        value={formData.check_out}
+                        onChange={(e) => setFormData({ ...formData, check_out: e.target.value })}
+                        className="w-full bg-surface-container-highest border-none rounded-xl px-3 py-3 text-sm font-medium focus:ring-2 focus:ring-primary"
+                      />
+                    </div>
+                    <button 
+                      type="button"
+                      onClick={() => setFormData({ ...formData, check_out: getISTTime() })}
+                      className="px-2 bg-surface-container-high rounded-xl text-[10px] font-bold hover:bg-primary/10 transition-colors"
+                    >
+                      Now
+                    </button>
                   </div>
                   <button 
                     type="button"
-                    onClick={() => setFormData({ ...formData, check_out: getISTTime() })}
-                    className="px-2 bg-surface-container-high rounded-xl text-[10px] font-bold hover:bg-primary/10 transition-colors"
+                    onClick={() => handleSubmit(undefined, 'out')}
+                    className="w-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-3 py-1.5 rounded-xl font-bold text-[10px] hover:bg-amber-200 dark:hover:bg-amber-900/50 transition-all flex items-center justify-center gap-1.5 border border-amber-200 dark:border-amber-800/30"
                   >
-                    Now
+                    <LogOut size={12} />
+                    {formData.id ? 'Update Out' : 'Out'}
                   </button>
                 </div>
-              </div>
-
-              <div className="space-y-1 flex flex-col justify-end">
-                <button 
-                  type="button"
-                  onClick={() => handleSubmit()}
-                  className="w-full bg-primary text-on-primary px-4 py-3 rounded-xl font-bold text-sm hover:opacity-90 transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary/20"
-                >
-                  <CheckCircle2 size={18} />
-                  {formData.id ? 'Update' : 'Log'}
-                </button>
               </div>
 
               <div className="space-y-1 flex flex-col justify-end">
@@ -856,14 +847,14 @@ const AttendanceLogging = () => {
               </div>
               <div className="flex items-center gap-2">
                 <label className="text-xs font-bold text-on-surface-variant uppercase">View Date:</label>
-                <CustomDatePicker 
+                <input 
+                  type="date" 
                   value={historyDate}
-                  onChange={(val) => {
-                    setHistoryDate(val);
-                    setFormData(prev => ({ ...prev, date: val }));
+                  onChange={(e) => {
+                    setHistoryDate(e.target.value);
+                    setFormData(prev => ({ ...prev, date: e.target.value }));
                   }}
-                  className="bg-surface-container-highest border-none rounded-lg px-3 py-1.5 text-xs font-bold focus:ring-2 focus:ring-primary w-28"
-                  containerClassName="w-auto"
+                  className="bg-surface-container-highest border-none rounded-lg px-3 py-1.5 text-xs font-bold focus:ring-2 focus:ring-primary"
                 />
               </div>
             </div>
@@ -1047,12 +1038,21 @@ const AttendanceLogging = () => {
               <div className="space-y-1">
                 <label className="block text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Specific Date</label>
                 <div className="relative">
-                  <CustomDatePicker 
+                  <input 
+                    type="date"
                     value={filterDate}
-                    onChange={(val) => setFilterDate(val)}
-                    onClear={() => setFilterDate('')}
+                    onChange={(e) => setFilterDate(e.target.value)}
                     className="w-full bg-surface-container-highest border-none rounded-xl pl-4 pr-10 py-3 text-sm font-medium focus:ring-2 focus:ring-primary"
                   />
+                  {filterDate && (
+                    <button 
+                      onClick={() => setFilterDate('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-on-surface-variant hover:text-primary transition-colors"
+                      title="Clear date"
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
                 </div>
               </div>
               <div className={cn("space-y-1 transition-opacity", filterDate && "opacity-50")}>
@@ -1101,7 +1101,7 @@ const AttendanceLogging = () => {
                     <th className="px-4 py-3 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider bg-surface-container-low">Employee</th>
                     <th className="px-4 py-3 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider bg-surface-container-low">Project</th>
                     <th className="px-4 py-3 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider bg-surface-container-low">In / Out</th>
-                    <th className="px-4 py-3 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider bg-surface-container-low">Rate</th>
+                    <th className="px-4 py-3 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider bg-surface-container-low">Rate / Units</th>
                     <th className="px-4 py-3 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider bg-surface-container-low">Allowance</th>
                     <th className="px-4 py-3 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider bg-surface-container-low">Status</th>
                     <th className="px-4 py-3 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider bg-surface-container-low text-right">Actions</th>
@@ -1125,7 +1125,7 @@ const AttendanceLogging = () => {
                     fullHistoryLogs.map((log) => (
                       <tr key={log.id} className="hover:bg-surface-container-low transition-colors group">
                         <td className="px-4 py-3 text-xs font-bold text-on-surface">
-                          {formatDate(log.date)}
+                          {new Date(log.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
@@ -1158,13 +1158,13 @@ const AttendanceLogging = () => {
                         </td>
                         <td className="px-4 py-3 text-xs font-bold text-on-surface">
                           {log.salary_type === 'Per-unit' ? (
-                            <span className="text-primary">Unt. {Math.round(Number(log.units)) || 0}</span>
+                            <span className="text-primary">Unt. {Number(log.units) || 0}</span>
                           ) : (
-                            <span>Rs. {Math.round(Number(log.salary_per_unit) || Number(log.current_salary) || 0).toLocaleString()}</span>
+                            <span>Rs. {(Number(log.salary_per_unit) || Number(log.current_salary) || 0).toLocaleString()}</span>
                           )}
                         </td>
                         <td className="px-4 py-3 text-xs font-bold text-emerald-600">
-                          {log.allowance ? `Rs. ${Math.round(log.allowance).toLocaleString()}` : '-'}
+                          {log.allowance ? `Rs. ${log.allowance.toLocaleString()}` : '-'}
                         </td>
                         <td className="px-4 py-3">
                           <span className={cn(
@@ -1271,7 +1271,7 @@ const AttendanceLogging = () => {
                     <th className="pb-2 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Project</th>
                     <th className="pb-2 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">In Time</th>
                     <th className="pb-2 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Out Time</th>
-                    <th className="pb-2 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Rate</th>
+                    <th className="pb-2 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Rate / Units</th>
                     <th className="pb-2 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Allowance</th>
                     <th className="pb-2 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Status</th>
                     <th className="pb-2 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider text-right">Action</th>
@@ -1286,7 +1286,7 @@ const AttendanceLogging = () => {
                     employeeHistory.map((log) => (
                       <tr key={log.id} className="hover:bg-surface-container-low transition-colors">
                         <td className="py-2 text-sm font-bold text-on-surface">
-                          {formatDate(log.date)}
+                          {new Date(log.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
                         </td>
                         <td className="py-2 text-xs font-medium text-on-surface-variant">{log.project || 'N/A'}</td>
                         <td className="py-2">
@@ -1307,15 +1307,15 @@ const AttendanceLogging = () => {
                         </td>
                         <td className="py-2 text-xs font-bold text-on-surface">
                           {log.salary_type === 'Per-unit' ? (
-                            <span className="text-primary">Unt. {Math.round(Number(log.units)) || 0}</span>
+                            <span className="text-primary">Unt. {Number(log.units) || 0}</span>
                           ) : (
-                            <span>Rs. {Math.round(Number(log.salary_per_unit) || Number(log.current_salary) || 0).toLocaleString()}</span>
+                            <span>Rs. {(Number(log.salary_per_unit) || Number(log.current_salary) || 0).toLocaleString()}</span>
                           )}
                         </td>
                         <td className="py-2">
                           {log.allowance > 0 ? (
                             <span className="text-xs font-bold text-emerald-600">
-                              Rs. {Math.round(Number(log.allowance)).toLocaleString()}
+                              Rs. {Number(log.allowance).toLocaleString()}
                             </span>
                           ) : (
                             <span className="text-xs text-outline">-</span>
@@ -1406,12 +1406,7 @@ const AttendanceLogging = () => {
                   </span>
                   <button 
                     onClick={() => {
-                      const selectableEmployees = employees.filter(e => {
-                        const logs = dailyLogs.filter(l => l.employee_id === e.id);
-                        const isFullDay = logs.some(l => l.status === 'Full-Day');
-                        const isDoubleHalfDay = logs.length >= 2;
-                        return !(isFullDay || isDoubleHalfDay);
-                      });
+                      const selectableEmployees = employees.filter(e => !alreadyAttendedIds.includes(e.id));
                       if (selectedEmployees.length === selectableEmployees.length) {
                         setSelectedEmployees([]);
                       } else {
@@ -1420,25 +1415,13 @@ const AttendanceLogging = () => {
                     }}
                     className="text-[10px] font-bold text-primary uppercase tracking-widest hover:underline"
                   >
-                    {(() => {
-                      const selectableCount = employees.filter(e => {
-                        const logs = dailyLogs.filter(l => l.employee_id === e.id);
-                        const isFullDay = logs.some(l => l.status === 'Full-Day');
-                        const isDoubleHalfDay = logs.length >= 2;
-                        return !(isFullDay || isDoubleHalfDay);
-                      }).length;
-                      return selectedEmployees.length === selectableCount ? 'Deselect All' : 'Select All';
-                    })()}
+                    {selectedEmployees.length === employees.filter(e => !alreadyAttendedIds.includes(e.id)).length ? 'Deselect All' : 'Select All'}
                   </button>
                 </div>
 
                 <div className="flex-1 overflow-y-auto space-y-2 pr-2 scrollbar-thin scrollbar-thumb-outline-variant scrollbar-track-transparent">
                   {filteredEmployees.map(emp => {
-                    const logs = dailyLogs.filter(l => l.employee_id === emp.id);
-                    const isFullDay = logs.some(l => l.status === 'Full-Day');
-                    const isDoubleHalfDay = logs.length >= 2;
-                    const isAlreadyAttended = isFullDay || isDoubleHalfDay;
-                    
+                    const isAlreadyAttended = alreadyAttendedIds.includes(emp.id);
                     return (
                       <div 
                         key={emp.id}
@@ -1485,12 +1468,12 @@ const AttendanceLogging = () => {
                 <form onSubmit={handleBulkSubmit} className="space-y-6">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1">
-                      <label className="block text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Date (YYYY-MM-DD)</label>
-                      <CustomDatePicker 
+                      <label className="block text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Date</label>
+                      <input 
+                        type="date"
                         value={bulkFormData.date}
-                        onChange={(val) => setBulkFormData({ ...bulkFormData, date: val })}
+                        onChange={(e) => setBulkFormData({ ...bulkFormData, date: e.target.value })}
                         className="w-full bg-surface-container-highest border-none rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-primary"
-                        hideIcon
                       />
                     </div>
                     <div className="space-y-1">
@@ -1635,13 +1618,13 @@ const AttendanceLogging = () => {
             <form onSubmit={handleUpdateAttendance} className="p-6 space-y-4 overflow-y-auto max-h-[70vh]">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Date (YYYY-MM-DD)</label>
-                  <CustomDatePicker 
+                  <label className="block text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Date</label>
+                  <input 
+                    type="date"
                     value={editFormData.date}
-                    onChange={(val) => setEditFormData({ ...editFormData, date: val })}
+                    onChange={(e) => setEditFormData({ ...editFormData, date: e.target.value })}
                     className="w-full bg-surface-container-highest border-none rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-primary"
                     required
-                    hideIcon
                   />
                 </div>
                 <div className="space-y-1">
@@ -1678,14 +1661,24 @@ const AttendanceLogging = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-1">
                   <label className="block text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Rate</label>
                   <input 
                     type="number"
-                    step="1"
-                    value={Math.round(editFormData.salary_per_unit)}
-                    onChange={(e) => setEditFormData({ ...editFormData, salary_per_unit: parseInt(e.target.value) || 0 })}
+                    step="0.01"
+                    value={editFormData.salary_per_unit}
+                    onChange={(e) => setEditFormData({ ...editFormData, salary_per_unit: parseFloat(e.target.value) || 0 })}
+                    className="w-full bg-surface-container-highest border-none rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Units</label>
+                  <input 
+                    type="number"
+                    step="0.01"
+                    value={editFormData.units}
+                    onChange={(e) => setEditFormData({ ...editFormData, units: parseFloat(e.target.value) || 0 })}
                     className="w-full bg-surface-container-highest border-none rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-primary"
                   />
                 </div>
@@ -1693,9 +1686,8 @@ const AttendanceLogging = () => {
                   <label className="block text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Allowance</label>
                   <input 
                     type="number"
-                    step="1"
-                    value={Math.round(editFormData.allowance)}
-                    onChange={(e) => setEditFormData({ ...editFormData, allowance: parseInt(e.target.value) || 0 })}
+                    value={editFormData.allowance}
+                    onChange={(e) => setEditFormData({ ...editFormData, allowance: parseFloat(e.target.value) || 0 })}
                     className="w-full bg-surface-container-highest border-none rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-primary"
                   />
                 </div>
