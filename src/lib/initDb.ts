@@ -1,4 +1,4 @@
-import { query } from './db.ts';
+import { query } from './db';
 
 export async function initDb() {
   if (!process.env.DATABASE_URL) {

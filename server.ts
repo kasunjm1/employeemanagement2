@@ -1,11 +1,10 @@
-import 'dotenv/config';
 import express from "express";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
-import { initDb } from "./src/lib/initDb.ts";
+import { initDb } from "./src/lib/initDb";
 export { initDb };
-import { query } from "./src/lib/db.ts";
+import { query } from "./src/lib/db";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1494,13 +1493,27 @@ const authenticate = (req: any, res: any, next: any) => {
     }
   });
 
-let setupPromise: Promise<void> | null = null;
+// Static files and SPA fallback
+const distPath = path.join(process.cwd(), "dist");
+if (process.env.NODE_ENV === "production" || process.env.VERCEL === "1") {
+  app.use(express.static(distPath));
+}
+
+// Global Error Handler (Register early to catch middleware errors)
+const globalErrorHandler = (err: any, req: any, res: any, next: any) => {
+  console.error("Unhandled Express Error:", err);
+  if (!res.headersSent) {
+    res.status(500).json({ 
+      error: "Internal Server Error", 
+      message: err.message,
+      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    });
+  }
+};
+
 export async function setupApp() {
-  if (setupPromise) return setupPromise;
-  
-  setupPromise = (async () => {
-    // Vite middleware for development
-    if (process.env.NODE_ENV !== "production" && process.env.VERCEL !== "1") {
+  // Vite middleware for development
+  if (process.env.NODE_ENV !== "production" && process.env.VERCEL !== "1") {
     try {
       const { createServer: createViteServer } = await import("vite");
       const vite = await createViteServer({
@@ -1512,62 +1525,46 @@ export async function setupApp() {
       console.error("Failed to load Vite:", e);
     }
   } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    
-    // Catch-all route for SPA fallback
-    app.get("*", (req, res) => {
-      const indexPath = path.join(distPath, "index.html");
-      if (fs.existsSync(indexPath)) {
-        res.sendFile(indexPath);
-      } else {
-        // Fallback to root index.html if dist/index.html is missing (e.g. during some build phases)
-        const rootIndexPath = path.join(process.cwd(), "index.html");
-        if (fs.existsSync(rootIndexPath)) {
-          res.sendFile(rootIndexPath);
-        } else {
-          res.status(404).send("Not Found");
-        }
-      }
-    });
+    // In production, the static middleware is already registered above.
+    // We just need the catch-all route at the very end.
   }
+}
 
-  // Global Error Handler
-  app.use((err: any, req: any, res: any, next: any) => {
-    console.error("Unhandled Express Error:", err);
-    if (!res.headersSent) {
-      res.status(500).json({ 
-        error: "Internal Server Error", 
-        message: err.message,
-        stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
-      });
+// We'll register the catch-all route AFTER all other routes are registered.
+// This will be done in the start() function or at the end of the file.
+
+// Register SPA fallback at the end
+if (process.env.NODE_ENV === "production" || process.env.VERCEL === "1") {
+  app.get("*", (req, res) => {
+    const indexPath = path.join(distPath, "index.html");
+    if (fs.existsSync(indexPath)) {
+      res.sendFile(indexPath);
+    } else {
+      const rootIndexPath = path.join(process.cwd(), "index.html");
+      if (fs.existsSync(rootIndexPath)) {
+        res.sendFile(rootIndexPath);
+      } else {
+        res.status(404).send("Not Found");
+      }
     }
   });
-})();
-  
-  return setupPromise;
 }
+
+// Register Global Error Handler at the very end
+app.use(globalErrorHandler);
 
 // Start logic
 const start = async () => {
   try {
-    // Always setup the app (routes, static files, etc.)
-    await setupApp();
-    
-    // Only start the server listener if NOT on Vercel
     if (process.env.VERCEL !== "1") {
+      await setupApp();
       console.log("Starting local server...");
       if (process.env.DATABASE_URL) {
         await initDb();
-      } else {
-        console.warn("DATABASE_URL environment variable is missing. Database initialization skipped.");
       }
-      
       app.listen(PORT, "0.0.0.0", () => {
         console.log(`Server running on http://localhost:${PORT}`);
       });
-    } else {
-      console.log("Vercel environment detected, listener skipped (Vercel handles it).");
     }
   } catch (err) {
     console.error("Fatal server error during startup:", err);
@@ -1577,6 +1574,8 @@ const start = async () => {
   }
 };
 
-start();
+if (process.env.VERCEL !== "1") {
+  start();
+}
 
 export default app;

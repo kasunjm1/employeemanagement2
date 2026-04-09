@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import pg from 'pg';
 
 // Force allow self-signed certificates for the entire process
