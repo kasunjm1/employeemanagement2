@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Search, Filter, DollarSign, CreditCard, History, User, ChevronRight, X, ArrowUpRight, ArrowDownLeft, Wallet, Calendar, LayoutGrid, List, Briefcase, Download, FileText, Plus, Trash2, Pencil } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Employee, Role, Section, PayrollAdvance, PayrollLoan, Project } from '@/src/types';
-import { cn } from '@/src/lib/utils';
+import { cn, formatDate } from '@/src/lib/utils';
 import { fetchWithAuth } from '@/src/lib/api';
 import { exportToExcel, exportToPDF } from '@/src/lib/reportUtils';
 
@@ -638,7 +638,7 @@ const PayrollManagement = () => {
                       }}
                       className="flex-1 flex items-center justify-center gap-2 py-2 bg-primary/5 text-primary rounded-xl text-xs font-bold hover:bg-primary hover:text-on-primary transition-all"
                     >
-                      <ArrowUpRight size={14} />
+                      <DollarSign size={14} />
                       Advance
                     </button>
                     <button 
@@ -646,9 +646,9 @@ const PayrollManagement = () => {
                         setSelectedEmployee(emp);
                         setShowLoanModal(true);
                       }}
-                      className="flex-1 flex items-center justify-center gap-2 py-2 bg-secondary/5 text-secondary rounded-xl text-xs font-bold hover:bg-secondary hover:text-on-secondary transition-all"
+                      className="flex-1 flex items-center justify-center gap-2 py-2 bg-primary/5 text-primary rounded-xl text-xs font-bold hover:bg-primary hover:text-on-primary transition-all"
                     >
-                      <DollarSign size={14} />
+                      <CreditCard size={14} />
                       Loan
                     </button>
                   </div>
@@ -728,32 +728,22 @@ const PayrollManagement = () => {
                           <button 
                             onClick={() => {
                               setSelectedEmployee(emp);
+                              setShowAdvanceModal(true);
+                            }}
+                            className="p-2 bg-primary/5 text-primary rounded-lg hover:bg-primary hover:text-on-primary transition-all"
+                            title="Advance"
+                          >
+                            <DollarSign size={16} />
+                          </button>
+                          <button 
+                            onClick={() => {
+                              setSelectedEmployee(emp);
                               fetchEmployeeHistory(emp.id);
                             }}
                             className="p-2 bg-surface-container text-on-surface-variant rounded-lg hover:bg-surface-container-high transition-all"
                             title="History"
                           >
                             <History size={16} />
-                          </button>
-                          <button 
-                            onClick={() => {
-                              setSelectedEmployee(emp);
-                              setShowAdvanceModal(true);
-                            }}
-                            className="p-2 bg-primary/5 text-primary rounded-lg hover:bg-primary hover:text-on-primary transition-all"
-                            title="Advance"
-                          >
-                            <ArrowUpRight size={16} />
-                          </button>
-                          <button 
-                            onClick={() => {
-                              setSelectedEmployee(emp);
-                              setShowLoanModal(true);
-                            }}
-                            className="p-2 bg-secondary/5 text-secondary rounded-lg hover:bg-secondary hover:text-on-secondary transition-all"
-                            title="Loan"
-                          >
-                            <DollarSign size={16} />
                           </button>
                         </div>
                       </td>
@@ -785,7 +775,7 @@ const PayrollManagement = () => {
                     <div className="font-bold text-on-surface">{adv.name}</div>
                     <div className="text-xs text-on-surface-variant">{adv.employee_number}</div>
                   </td>
-                  <td className="px-6 py-4 text-sm text-on-surface">{new Date(adv.date).toLocaleDateString()}</td>
+                  <td className="px-6 py-4 text-sm text-on-surface">{formatDate(adv.date)}</td>
                   <td className="px-6 py-4 font-bold text-error">Rs. {adv.amount.toLocaleString()}</td>
                   <td className="px-6 py-4">
                     <span className="px-2 py-1 bg-green-100 text-green-700 text-[10px] font-bold rounded-md uppercase tracking-wider">{adv.status}</span>
@@ -806,51 +796,6 @@ const PayrollManagement = () => {
               {advances.length === 0 && (
                 <tr>
                   <td colSpan={4} className="px-6 py-12 text-center text-on-surface-variant italic">No advance records found.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {activeTab === 'loans' && (
-        <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/10 overflow-hidden">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-surface-container-low">
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">Employee</th>
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">Amount</th>
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">Status</th>
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-outline-variant/10">
-              {loans.map(loan => (
-                <tr key={loan.id} className="hover:bg-surface-container-lowest transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="font-bold text-on-surface">{loan.name}</div>
-                    <div className="text-xs text-on-surface-variant">{loan.employee_number}</div>
-                  </td>
-                  <td className="px-6 py-4 font-bold text-error">Rs. {loan.amount.toLocaleString()}</td>
-                  <td className="px-6 py-4">
-                    <span className="px-2 py-1 bg-green-100 text-green-700 text-[10px] font-bold rounded-md uppercase tracking-wider">{loan.status}</span>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <div className="flex justify-end gap-2">
-                      <button 
-                        onClick={() => handleEditLoan(loan)}
-                        className="p-2 bg-primary/5 text-primary rounded-lg hover:bg-primary hover:text-on-primary transition-all"
-                        title="Edit Loan"
-                      >
-                        <Pencil size={14} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {loans.length === 0 && (
-                <tr>
-                  <td colSpan={3} className="px-6 py-12 text-center text-on-surface-variant italic">No loan records found.</td>
                 </tr>
               )}
             </tbody>
@@ -889,10 +834,10 @@ const PayrollManagement = () => {
                     type="number" 
                     required
                     autoFocus
-                    value={advanceAmount}
+                    value={advanceAmount ? Math.round(parseFloat(advanceAmount)) : ''}
                     onChange={(e) => setAdvanceAmount(e.target.value)}
                     className="w-full bg-surface-container-low border-none rounded-xl py-3 px-4 text-sm font-bold text-on-surface focus:ring-2 focus:ring-primary transition-all"
-                    placeholder="0.00"
+                    placeholder="0"
                   />
                 </div>
 
@@ -936,7 +881,7 @@ const PayrollManagement = () => {
                             type="number"
                             required
                             placeholder="Amount"
-                            value={b.amount}
+                            value={b.amount ? Math.round(parseFloat(b.amount)) : ''}
                             onChange={(e) => updateBreakdown(index, 'amount', e.target.value)}
                             className="w-24 bg-surface-container-lowest border-none rounded-lg py-1.5 px-2 text-xs font-bold text-on-surface focus:ring-2 focus:ring-primary transition-all"
                           />
@@ -1023,10 +968,10 @@ const PayrollManagement = () => {
                     type="number" 
                     required
                     autoFocus
-                    value={loanAmount}
+                    value={loanAmount ? Math.round(parseFloat(loanAmount)) : ''}
                     onChange={(e) => setLoanAmount(e.target.value)}
                     className="w-full bg-surface-container-low border-none rounded-xl py-3 px-4 text-sm font-bold text-on-surface focus:ring-2 focus:ring-secondary transition-all"
-                    placeholder="0.00"
+                    placeholder="0"
                   />
                 </div>
 
@@ -1094,7 +1039,7 @@ const PayrollManagement = () => {
                         {employeeHistory.advances.map(adv => (
                           <React.Fragment key={adv.id}>
                             <tr className="group hover:bg-surface-container-high/50 transition-colors">
-                              <td className="px-4 py-2.5 text-on-surface">{new Date(adv.date).toLocaleDateString()}</td>
+                              <td className="px-4 py-2.5 text-on-surface">{formatDate(adv.date)}</td>
                               <td className="px-4 py-2.5 text-right font-bold text-error">
                                 <div className="flex items-center justify-end gap-2">
                                   <button 
@@ -1148,52 +1093,6 @@ const PayrollManagement = () => {
                         {employeeHistory.advances.length === 0 && (
                           <tr>
                             <td colSpan={3} className="px-4 py-6 text-center text-on-surface-variant italic">No advance history.</td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </section>
-
-                <section>
-                  <h4 className="font-bold text-[10px] uppercase tracking-widest text-secondary mb-3 flex items-center gap-2">
-                    <DollarSign size={14} />
-                    Loans History
-                  </h4>
-                  <div className="bg-surface-container-low rounded-xl overflow-hidden border border-outline-variant/5">
-                    <table className="w-full text-left text-xs">
-                      <thead>
-                        <tr className="bg-surface-container border-b border-outline-variant/10">
-                          <th className="px-4 py-2.5 font-bold text-on-surface-variant uppercase text-[9px]">Date</th>
-                          <th className="px-4 py-2.5 font-bold text-right text-on-surface-variant uppercase text-[9px]">Amount</th>
-                          <th className="px-4 py-2.5 font-bold text-on-surface-variant uppercase text-[9px]">Status</th>
-                          <th className="px-4 py-2.5 font-bold text-right text-on-surface-variant uppercase text-[9px]">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-outline-variant/10">
-                        {employeeHistory.loans.map(loan => (
-                          <tr key={loan.id} className="group hover:bg-surface-container-high/50 transition-colors">
-                            <td className="px-4 py-2.5 text-on-surface">{new Date(loan.date).toLocaleDateString()}</td>
-                            <td className="px-4 py-2.5 text-right font-bold text-error">Rs. {loan.amount.toLocaleString()}</td>
-                            <td className="px-4 py-2.5">
-                              <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 text-[8px] font-bold rounded uppercase tracking-wider">{loan.status}</span>
-                            </td>
-                            <td className="px-4 py-2.5 text-right">
-                              <div className="flex justify-end gap-1">
-                                <button 
-                                  onClick={() => handleEditLoan(loan)}
-                                  className="p-1 text-primary hover:bg-primary/10 rounded transition-all opacity-0 group-hover:opacity-100"
-                                  title="Edit"
-                                >
-                                  <Pencil size={12} />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                        {employeeHistory.loans.length === 0 && (
-                          <tr>
-                            <td colSpan={3} className="px-4 py-6 text-center text-on-surface-variant italic">No loan history.</td>
                           </tr>
                         )}
                       </tbody>

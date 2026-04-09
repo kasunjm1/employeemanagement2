@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Employee, Attendance } from '@/src/types';
 import { cn, formatTime, formatDate } from '@/src/lib/utils';
 import { fetchWithAuth } from '@/src/lib/api';
+import { CustomDatePicker } from '@/src/components/ui/CustomDatePicker';
 
 const EmployeeProfile = () => {
   const { id } = useParams<{ id: string }>();
@@ -345,9 +346,9 @@ const EmployeeProfile = () => {
                   <History size={16} />
                 </button>
                 <button onClick={() => setShowAdvanceModal(true)} className="flex items-center gap-1.5 bg-primary/10 text-primary px-3 py-1.5 rounded-xl font-bold text-[11px] hover:bg-primary/20 transition-all">
-                  <Plus size={12} /> Advance
+                  <DollarSign size={12} /> Advance
                 </button>
-                <button onClick={() => setShowLoanModal(true)} className="flex items-center gap-1.5 bg-secondary-container/20 text-secondary px-3 py-1.5 rounded-xl font-bold text-[11px] hover:bg-secondary-container/30 transition-all">
+                <button onClick={() => setShowLoanModal(true)} className="flex items-center gap-1.5 bg-secondary/10 text-secondary px-3 py-1.5 rounded-xl font-bold text-[11px] hover:bg-secondary/20 transition-all">
                   <DollarSign size={12} /> Loan
                 </button>
               </div>
@@ -398,27 +399,6 @@ const EmployeeProfile = () => {
                               <td className="py-2.5"><span className="bg-emerald-50 text-emerald-700 text-[8px] font-bold px-1.5 py-0.5 rounded uppercase">{adv.status}</span></td>
                             </tr>
                           )) : <tr><td colSpan={3} className="py-4 text-center text-on-surface-variant italic">No advances recorded</td></tr>}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                  <div>
-                    <h4 className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-3">Active Loans</h4>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="text-left text-[9px] font-bold text-on-surface-variant uppercase tracking-widest border-b border-outline-variant/10">
-                            <th className="pb-2">Date</th>
-                            <th className="pb-2 text-right">Total Amount</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {loans.length > 0 ? loans.slice(0, 5).map(loan => (
-                            <tr key={loan.id} className="border-b border-outline-variant/5">
-                              <td className="py-2.5">{formatDate(loan.date)}</td>
-                              <td className="py-2.5 font-bold text-right text-error">Rs. {Number(loan.amount).toLocaleString()}</td>
-                            </tr>
-                          )) : <tr><td colSpan={2} className="py-4 text-center text-on-surface-variant italic">No loans recorded</td></tr>}
                         </tbody>
                       </table>
                     </div>
@@ -568,7 +548,13 @@ const EmployeeProfile = () => {
           <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-surface-container-lowest rounded-3xl p-6 max-w-md w-full shadow-2xl border border-outline-variant/10">
             <h3 className="font-headline text-xl font-bold text-on-surface mb-5">Add Attendance</h3>
             <div className="space-y-3">
-              <div><label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Date</label><input type="date" value={newLog.date} onChange={(e) => setNewLog(prev => ({ ...prev, date: e.target.value }))} className="w-full bg-surface-container-low border-none rounded-xl py-2.5 px-3 text-xs font-medium text-on-surface" /></div>
+              <div><label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Date</label>
+                <CustomDatePicker 
+                  value={newLog.date}
+                  onChange={(val) => setNewLog(prev => ({ ...prev, date: val }))}
+                  className="w-full bg-surface-container-low border-none rounded-xl py-2.5 px-3 text-xs font-medium text-on-surface"
+                />
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Check-in</label><input type="time" value={newLog.check_in} onChange={(e) => setNewLog(prev => ({ ...prev, check_in: e.target.value }))} className="w-full bg-surface-container-low border-none rounded-xl py-2.5 px-3 text-xs font-medium text-on-surface" /></div>
                 <div><label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Check-out</label><input type="time" value={newLog.check_out} onChange={(e) => setNewLog(prev => ({ ...prev, check_out: e.target.value }))} className="w-full bg-surface-container-low border-none rounded-xl py-2.5 px-3 text-xs font-medium text-on-surface" /></div>
@@ -612,10 +598,10 @@ const EmployeeProfile = () => {
                   type="number" 
                   required
                   autoFocus
-                  value={advanceAmount}
+                  value={advanceAmount ? Math.round(parseFloat(advanceAmount)) : ''}
                   onChange={(e) => setAdvanceAmount(e.target.value)}
                   className="w-full bg-surface-container-low border-none rounded-xl py-3 px-4 text-sm font-bold text-on-surface focus:ring-2 focus:ring-primary transition-all"
-                  placeholder="0.00"
+                  placeholder="0"
                 />
               </div>
 
@@ -660,10 +646,10 @@ const EmployeeProfile = () => {
                         <input 
                           type="number" 
                           required
-                          value={b.amount}
+                          value={b.amount ? Math.round(parseFloat(b.amount)) : ''}
                           onChange={(e) => updateBreakdown(index, 'amount', e.target.value)}
                           className="w-24 bg-surface-container-lowest border-none rounded-lg py-1.5 px-2 text-xs font-bold text-on-surface focus:ring-2 focus:ring-primary transition-all"
-                          placeholder="0.00"
+                          placeholder="0"
                         />
                       </div>
                       <button 
@@ -718,7 +704,7 @@ const EmployeeProfile = () => {
           <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-surface-container-lowest rounded-3xl p-6 max-w-md w-full shadow-2xl border border-outline-variant/10">
             <h3 className="font-headline text-xl font-bold text-on-surface mb-5">Apply for Loan</h3>
             <div className="space-y-3">
-              <div><label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Total Amount (Rs.)</label><input type="number" value={newLoan.amount} onChange={(e) => setNewLoan(prev => ({ ...prev, amount: Number(e.target.value) }))} className="w-full bg-surface-container-low border-none rounded-xl py-2.5 px-3 text-xs font-medium text-on-surface" /></div>
+              <div><label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Total Amount (Rs.)</label><input type="number" value={newLoan.amount ? Math.round(newLoan.amount) : ''} onChange={(e) => setNewLoan(prev => ({ ...prev, amount: Number(e.target.value) }))} className="w-full bg-surface-container-low border-none rounded-xl py-2.5 px-3 text-xs font-medium text-on-surface" placeholder="0" /></div>
             </div>
             <div className="flex gap-3 mt-6"><button onClick={() => setShowLoanModal(false)} className="flex-1 py-2.5 bg-surface-container-high text-on-surface font-bold rounded-xl text-sm">Cancel</button><button onClick={handleAddLoan} className="flex-1 py-2.5 bg-primary text-on-primary font-bold rounded-xl text-sm shadow-lg shadow-primary/20">Apply</button></div>
           </motion.div>
